@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Студия танцев — CRM · A1 «Расписание и залы»</title>
+<style>
+  :root{
+    --bg:#f5f6fb; --card:#fff; --text:#151823; --muted:#6b7280; --line:#e6e8f1;
+    --accent:#6d28d9; --accent-2:#8b5cf6; --accent-soft:#f2ecfe;
+    --ok:#10b981; --warn:#f59e0b; --danger:#ef4444;
+    --radius:14px;
+    --shadow:0 1px 2px rgba(16,24,40,.05), 0 10px 26px -14px rgba(16,24,40,.22);
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.45 "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  button, input, select{font:inherit; color:inherit}
+
+  /* ---------- шапка ---------- */
+  .top{
+    position:sticky; top:0; z-index:30; display:flex; align-items:center; gap:22px;
+    height:62px; padding:0 22px; background:#fff; border-bottom:1px solid var(--line);
+  }
+  .brand{display:flex; align-items:baseline; gap:9px; font-weight:700; letter-spacing:.2px; white-space:nowrap}
+  .brand span{color:var(--accent)}
+  .brand small{font-weight:500; font-size:11px; color:var(--muted); letter-spacing:0}
+  .tabs{display:flex; gap:4px}
+  .tab{
+    border:0; background:transparent; padding:8px 13px; border-radius:10px; cursor:pointer;
+    color:var(--muted); font-weight:500;
+  }
+  .tab:hover{background:#f4f4f9; color:var(--text)}
+  .tab.active{background:var(--accent-soft); color:var(--accent); font-weight:600}
+  .spacer{flex:1}
+
+  .btn{
+    border:1px solid var(--line); background:#fff; border-radius:10px; padding:8px 13px;
+    cursor:pointer; white-space:nowrap; transition:background .15s, border-color .15s;
+  }
+  .btn:hover{background:#fafaff; border-color:#d9dbe7}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600}
+  .btn.primary:hover{background:#5b21b6; border-color:#5b21b6}
+  .btn.ghost{border-color:transparent; background:transparent; color:var(--muted)}
+  .btn.ghost:hover{background:#f4f4f9; color:var(--text)}
+  .btn.danger{color:var(--danger)}
+  .btn.danger:hover{background:#fef2f2}
+  .btn:disabled{opacity:.45; cursor:not-allowed}
+  .btn.icon{padding:7px 9px; line-height:1}
+
+  main{max-width:1440px; margin:0 auto; padding:18px 22px 70px}
+
+  /* ---------- панель управления ---------- */
+  .toolbar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px}
+  .week-nav{display:flex; align-items:center; gap:6px}
+  .week-label{font-weight:600; min-width:190px}
+  .week-note{font-size:12px; color:var(--muted); margin-left:2px}
+  .filters{display:flex; gap:8px; margin-left:auto; flex-wrap:wrap}
+  select, input[type=text], input[type=date], input[type=time], input[type=number]{
+    border:1px solid var(--line); background:#fff; border-radius:10px; padding:8px 10px; outline:none;
+  }
+  select:focus, input:focus{border-color:var(--accent-2); box-shadow:0 0 0 3px rgba(139,92,246,.15)}
+
+  /* ---------- метрики ---------- */
+  .stats{display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:14px}
+  .stat{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px; box-shadow:var(--shadow)}
+  .stat-k{font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted)}
+  .stat-v{font-size:24px; font-weight:700; margin:3px 0 1px}
+  .stat-s{font-size:12px; color:var(--muted)}
+
+  /* ---------- календарь ---------- */
+  .calendar{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden}
+  .cal-head, .cal-body{display:grid; grid-template-columns:66px repeat(7, 1fr)}
+  .cal-inner{min-width:720px}
+  .cal-head{
+    position:sticky; top:0; z-index:12;
+    background:#fafaff; border-bottom:1px solid var(--line);
+  }
+  .cal-head > div{padding:9px 6px; text-align:center; font-size:12px; color:var(--muted); border-left:1px solid #f0f1f7}
+  .cal-head > div:first-child{border-left:0}
+  .cal-day-head span{display:block; text-transform:uppercase; letter-spacing:.08em; font-size:10.5px}
+  .cal-day-head b{font-size:15px; color:var(--text)}
+  .cal-day-head.today b{color:var(--accent)}
+  .cal-day-head.today{background:var(--accent-soft)}
+
+  .cal-scroll{max-height:calc(100vh - 330px); overflow:auto}
+  .cal-body{position:relative}
+  .cal-times{position:relative; border-right:1px solid var(--line)}
+  .cal-time{
+    position:absolute; right:8px; transform:translateY(-50%);
+    font-size:11px; color:#9aa0b0; font-variant-numeric:tabular-nums;
+  }
+  .cal-col{
+    position:relative; border-left:1px solid #f0f1f7; cursor:crosshair;
+    background-image:repeating-linear-gradient(to bottom, #eef0f7 0 1px, transparent 1px var(--hour-h));
+    background-position:0 0;
+  }
+  .cal-col:first-of-type{border-left:0}
+  .cal-col.today{background-color:#fcfbff}
+  .cal-col:hover{background-color:#fbfaff}
+
+  .evt{
+    position:absolute; padding:5px 7px; border-radius:9px; overflow:hidden; cursor:pointer;
+    background:var(--tint); border-left:3px solid var(--tc);
+    box-shadow:0 1px 2px rgba(16,24,40,.06);
+    transition:transform .12s, box-shadow .12s;
+    z-index:2;
+  }
+  .evt:hover{transform:translateY(-1px); box-shadow:0 6px 16px -6px rgba(16,24,40,.35); z-index:5}
+  .evt-head{display:flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:var(--tc)}
+  .evt-time{font-variant-numeric:tabular-nums}
+  .evt-badge{
+    font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+    background:#fff; color:var(--tc); border-radius:5px; padding:1px 4px;
+  }
+  .evt-n{font-size:12px; font-weight:600; line-height:1.25; margin-top:1px;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+  .evt-m{font-size:11px; color:#5b6072; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .evt.compact{padding:3px 6px}
+  .evt.compact .evt-n{font-size:11px; -webkit-line-clamp:1}
+
+  .now-line{position:absolute; left:0; right:0; height:0; border-top:2px solid #ef4444; z-index:6; pointer-events:none}
+  .now-line i{position:absolute; left:-4px; top:-4px; width:7px; height:7px; border-radius:50%; background:#ef4444}
+
+  .legend{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:12px; color:var(--muted)}
+  .legend i{display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:5px; vertical-align:middle}
+
+  /* ---------- таблица занятий ---------- */
+  .table-wrap{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow)}
+  table{width:100%; border-collapse:collapse}
+  th, td{padding:10px 14px; text-align:left; border-bottom:1px solid #f0f1f7; vertical-align:middle}
+  th{background:#fafaff; font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:600}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:#fcfbff}
+  .pill{display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; background:#f1f2f8; color:#4b5060}
+  .pill.group{background:#eef2ff; color:#4338ca}
+  .pill.indiv{background:#ecfdf5; color:#047857}
+  .pill.weekly{background:#f5f3ff; color:#6d28d9}
+  .pill.once{background:#fff7ed; color:#b45309}
+  .tname{font-weight:600}
+  .muted{color:var(--muted)}
+
+  /* ---------- залы ---------- */
+  .rooms-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px}
+  .room-card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; box-shadow:var(--shadow)}
+  .room-card header{display:flex; align-items:center; justify-content:space-between; gap:8px}
+  .room-card h3{margin:0; font-size:15px}
+  .bar{height:7px; border-radius:999px; background:#eef0f7; overflow:hidden; margin:10px 0 6px}
+  .bar i{display:block; height:100%; border-radius:999px; background:linear-gradient(90deg, var(--accent-2), var(--accent))}
+  .room-meta{display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--muted); margin-top:4px}
+  .room-meta b{color:var(--text)}
+  .add-room{background:var(--card); border:1px dashed #d5d8e6; border-radius:var(--radius); padding:14px 16px; margin-top:14px}
+  .add-room form{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+  .add-room h3{margin:0 0 10px; font-size:14px; font-weight:600}
+  .teachers{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:6px 16px 12px; margin-top:14px; box-shadow:var(--shadow)}
+  .teachers h3{margin:12px 0 6px; font-size:14px}
+  .teacher-row{display:flex; align-items:center; gap:10px; padding:7px 0; border-top:1px solid #f4f5fa; font-size:13px}
+  .dot{width:9px; height:9px; border-radius:50%; flex:none}
+
+  /* ---------- модальное окно ---------- */
+  .modal{position:fixed; inset:0; z-index:60; background:rgba(17,20,32,.45); display:flex; align-items:flex-start; justify-content:center; padding:40px 16px; overflow-y:auto}
+  .modal-panel{background:#fff; width:min(620px, 100%); border-radius:18px; box-shadow:0 30px 80px -20px rgba(10,12,25,.5); padding:20px 22px 18px}
+  .modal-panel h3{margin:0 0 4px; font-size:17px}
+  .modal-sub{margin:0 0 16px; font-size:12.5px; color:var(--muted)}
+  .seg{display:inline-flex; background:#f1f2f8; border-radius:11px; padding:3px; gap:3px}
+  .seg button{border:0; background:transparent; border-radius:8px; padding:7px 14px; cursor:pointer; color:var(--muted); font-weight:500}
+  .seg button.active{background:#fff; color:var(--text); font-weight:600; box-shadow:0 1px 3px rgba(16,24,40,.14)}
+  .fields{display:grid; grid-template-columns:1fr 1fr; gap:12px 14px; margin-top:14px}
+  .field{display:flex; flex-direction:column; gap:5px}
+  .field.full{grid-column:1 / -1}
+  .field label{font-size:12px; color:var(--muted); font-weight:500}
+  .field select, .field input{width:100%}
+  .hint{font-size:12px; color:#b45309; background:#fffbeb; border:1px solid #fde68a; border-radius:9px; padding:8px 10px; margin-top:12px}
+  .errors{background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:10px 12px; margin-top:12px; font-size:12.5px; color:#b91c1c}
+  .errors ul{margin:6px 0 0; padding-left:18px}
+  .errors b{display:block; font-size:12.5px}
+  .modal-actions{display:flex; align-items:center; gap:8px; margin-top:18px; padding-top:14px; border-top:1px solid #f0f1f7}
+  .modal-actions .spacer{flex:1}
+
+  .toast{
+    position:fixed; right:22px; bottom:22px; z-index:90; background:#111827; color:#fff;
+    padding:11px 16px; border-radius:12px; font-size:13px; box-shadow:0 18px 40px -14px rgba(0,0,0,.6);
+    opacity:0; transform:translateY(8px); transition:opacity .18s, transform .18s; pointer-events:none;
+  }
+  .toast.show{opacity:1; transform:none}
+  .toast.err{background:#b91c1c}
+
+  @media (max-width: 900px){
+    .top{flex-wrap:wrap; height:auto; padding:10px 14px; gap:10px}
+    main{padding:14px}
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .cal-head, .cal-body{grid-template-columns:52px repeat(7, minmax(96px, 1fr))}
+    .cal-scroll{overflow-x:auto}
+    .fields{grid-template-columns:1fr}
+    .filters{margin-left:0; width:100%}
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">Studio<span>CRM</span> <small>A1 · расписание и залы</small></div>
+  <nav class="tabs">
+    <button class="tab active" data-view="schedule">Расписание</button>
+    <button class="tab" data-view="classes">Занятия</button>
+    <button class="tab" data-view="rooms">Залы</button>
+  </nav>
+  <div class="spacer"></div>
+  <button class="btn primary" id="btn-new">+ Новое занятие</button>
+</header>
+
+<main>
+  <!-- РАСПИСАНИЕ -->
+  <section id="view-schedule">
+    <div class="toolbar">
+      <div class="week-nav">
+        <button class="btn icon" id="prev-week" title="Предыдущая неделя">←</button>
+        <button class="btn" id="today">Текущая неделя</button>
+        <button class="btn icon" id="next-week" title="Следующая неделя">→</button>
+      </div>
+      <div>
+        <span class="week-label" id="week-label"></span>
+        <span class="week-note" id="week-note"></span>
+      </div>
+      <div class="filters">
+        <select id="f-teacher"></select>
+        <select id="f-room"></select>
+        <select id="f-kind">
+          <option value="">Все занятия</option>
+          <option value="group">Групповые</option>
+          <option value="individual">Индивидуальные</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="calendar" id="calendar"></div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <!-- ЗАНЯТИЯ -->
+  <section id="view-classes" hidden>
+    <div class="table-wrap" id="classes-wrap"></div>
+  </section>
+
+  <!-- ЗАЛЫ -->
+  <section id="view-rooms" hidden>
+    <div class="rooms-grid" id="rooms-grid"></div>
+    <div class="add-room">
+      <h3>Добавить зал</h3>
+      <form id="room-form">
+        <input type="text" id="room-name" placeholder="Название, например «Зал Г»" required maxlength="40">
+        <input type="number" id="room-cap" placeholder="Вместимость, чел." min="1" max="200" value="15" required style="width:170px">
+        <input type="text" id="room-note" placeholder="Комментарий (площадь, особенности)" maxlength="60" style="min-width:240px">
+        <button class="btn primary" type="submit">Добавить</button>
+      </form>
+    </div>
+    <div class="teachers" id="teachers-panel"></div>
+  </section>
+</main>
+
+<!-- МОДАЛЬНОЕ ОКНО -->
+<div class="modal" id="modal" hidden>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h3 id="modal-title">Новое занятие</h3>
+    <p class="modal-sub" id="modal-sub">Заполните параметры — конфликты по залу и преподавателю проверяются автоматически.</p>
+
+    <form id="class-form" novalidate>
+      <input type="hidden" id="f-kind-input" value="group">
+      <input type="hidden" id="f-repeat" value="weekly">
+
+      <div class="field">
+        <label>Тип занятия</label>
+        <div class="seg" id="seg-kind">
+          <button type="button" data-kind="group" class="active">Групповое</button>
+          <button type="button" data-kind="individual">Индивидуальное</button>
+        </div>
+      </div>
+
+      <div class="fields">
+        <div class="field full" id="row-group">
+          <label for="f-group">Группа</label>
+          <select id="f-group"></select>
+        </div>
+
+        <div class="field full" id="row-student" hidden>
+          <label for="f-student">Ученик / ученики</label>
+          <input type="text" id="f-student" placeholder="Например, Алиса Ветрова" maxlength="80">
+        </div>
+
+        <div class="field">
+          <label for="f-teacher-select">Преподаватель</label>
+          <select id="f-teacher-select"></select>
+        </div>
+
+        <div class="field">
+          <label for="f-room">Зал</label>
+          <select id="f-room-select"></select>
+        </div>
+
+        <div class="field full">
+          <label>Повторяемость</label>
+          <div class="seg" id="seg-repeat">
+            <button type="button" data-repeat="weekly" class="active">Еженедельно</button>
+            <button type="button" data-repeat="once">Разовое</button>
+          </div>
+        </div>
+
+        <div class="field" id="row-weekday">
+          <label for="f-weekday">День недели</label>
+          <select id="f-weekday"></select>
+        </div>
+
+        <div class="field" id="row-date" hidden>
+          <label for="f-date">Дата</label>
+          <input type="date" id="f-date">
+        </div>
+
+        <div class="field">
+          <label for="f-start">Начало</label>
+          <input type="time" id="f-start" step="900" value="18:00">
+        </div>
+
+        <div class="field">
+          <label for="f-duration">Длительность</label>
+          <select id="f-duration"></select>
+        </div>
+
+        <div class="field" id="row-until">
+          <label for="f-until">Повторять до (необязательно)</label>
+          <input type="date" id="f-until">
+        </div>
+      </div>
+
+      <div class="hint" id="capacity-hint" hidden></div>
+      <div class="errors" id="modal-errors" hidden></div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn danger ghost" id="btn-delete" hidden>Удалить</button>
+        <div class="spacer"></div>
+        <button type="button" class="btn" id="btn-cancel">Отмена</button>
+        <button type="submit" class="btn primary" id="btn-save">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ============================ константы ============================ */
+  const LS_KEY = 'studiocrm.a1.v1';
+  const PX_PER_MIN = 1.05;                 // 1 час = 63px
+  const DAY_START = 9 * 60;                // рабочий день студии 09:00
+  const DAY_END = 22 * 60;                 // ... 22:00
+  const TOTAL_MIN = DAY_END - DAY_START;
+  const DURATIONS = [45, 60, 75, 90, 120];
+  const DAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+  const DAY_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+
+  /* ============================ утилиты ============================ */
+  const pad = n => String(n).padStart(2, '0');
+  const fmt = m => pad(Math.floor(m / 60)) + ':' + pad(m % 60);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const qs = (sel, root = document) => root.querySelector(sel);
+  const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const uid = p => p + Math.random().toString(36).slice(2, 7) + Date.now().toString(36).slice(-3);
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+  const dateKey = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  const parseKey = k => { const p = k.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]); };
+  const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+  const startOfWeek = base => {
+    const d = new Date(base);
+    const dow = (d.getDay() + 6) % 7;              // 0 = понедельник
+    d.setDate(d.getDate() - dow);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+  const fmtShort = d => pad(d.getDate()) + '.' + pad(d.getMonth() + 1);
+  const fmtFull = d => pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear();
+  const toMinutes = t => {
+    const m = /^(\d{2}):(\d{2})$/.exec(t || '');
+    return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
+  };
+  const tint = (hex, a) => {
+    const n = parseInt(hex.slice(1), 16);
+    return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')';
+  };
+
+  /* ============================ данные ============================ */
+  function seed() {
+    return {
+      rooms: [
+        { id: 'r1', name: 'Зал А', capacity: 25, note: 'Большой зал · 80 м² · станки' },
+        { id: 'r2', name: 'Зал Б', capacity: 14, note: 'Малый зал · 45 м²' },
+        { id: 'r3', name: 'Зал В', capacity: 18, note: 'Зеркальный · 60 м² · музыка' }
+      ],
+      teachers: [
+        { id: 't1', name: 'Анна Ковалёва', spec: 'Hip-Hop', color: '#7c3aed' },
+        { id: 't2', name: 'Мария Соколова', spec: 'Contemporary', color: '#0ea5e9' },
+        { id: 't3', name: 'Игорь Петров', spec: 'Breaks', color: '#f59e0b' },
+        { id: 't4', name: 'Елена Смирнова', spec: 'Классика и растяжка', color: '#10b981' }
+      ],
+      groups: [
+        { id: 'g1', name: 'Hip-Hop · начинающие', teacherId: 't1', students: 14 },
+        { id: 'g2', name: 'Hip-Hop · продвинутые', teacherId: 't1', students: 12 },
+        { id: 'g3', name: 'Contemporary · средние', teacherId: 't2', students: 10 },
+        { id: 'g4', name: 'Contemporary · начинающие', teacherId: 't2', students: 16 },
+        { id: 'g5', name: 'Breaks Kids', teacherId: 't3', students: 9 },
+        { id: 'g6', name: 'Stretching', teacherId: 't4', students: 12 },
+        { id: 'g7', name: 'Открытый класс', teacherId: 't1', students: 22 }
+      ],
+      classes: [
+        /* понедельник */
+        { id: 'c01', kind: 'group', groupId: 'g6', teacherId: 't4', roomId: 'r2', repeat: 'weekly', weekday: 0, start: 600, duration: 60, until: null },
+        { id: 'c02', kind: 'group', groupId: 'g1', teacherId: 't1', roomId: 'r1', repeat: 'weekly', weekday: 0, start: 1080, duration: 90, until: null },
+        { id: 'c03', kind: 'group', groupId: 'g5', teacherId: 't3', roomId: 'r3', repeat: 'weekly', weekday: 0, start: 1200, duration: 60, until: null },
+        /* вторник */
+        { id: 'c04', kind: 'individual', student: 'Алиса Ветрова', teacherId: 't2', roomId: 'r3', repeat: 'weekly', weekday: 1, start: 660, duration: 60, until: null },
+        { id: 'c05', kind: 'group', groupId: 'g3', teacherId: 't2', roomId: 'r2', repeat: 'weekly', weekday: 1, start: 1140, duration: 90, until: null },
+        /* среда */
+        { id: 'c06', kind: 'group', groupId: 'g2', teacherId: 't1', roomId: 'r1', repeat: 'weekly', weekday: 2, start: 1110, duration: 90, until: null },
+        { id: 'c07', kind: 'group', groupId: 'g6', teacherId: 't4', roomId: 'r2', repeat: 'weekly', weekday: 2, start: 1200, duration: 60, until: null },
+        /* четверг */
+        { id: 'c08', kind: 'individual', student: 'Тимур Асланов', teacherId: 't3', roomId: 'r3', repeat: 'weekly', weekday: 3, start: 720, duration: 60, until: null },
+        { id: 'c09', kind: 'group', groupId: 'g4', teacherId: 't2', roomId: 'r1', repeat: 'weekly', weekday: 3, start: 1140, duration: 90, until: null },
+        /* пятница */
+        { id: 'c10', kind: 'group', groupId: 'g5', teacherId: 't3', roomId: 'r3', repeat: 'weekly', weekday: 4, start: 1080, duration: 60, until: null },
+        { id: 'c11', kind: 'group', groupId: 'g1', teacherId: 't1', roomId: 'r1', repeat: 'weekly', weekday: 4, start: 1170, duration: 90, until: null },
+        /* суббота */
+        { id: 'c12', kind: 'group', groupId: 'g3', teacherId: 't2', roomId: 'r2', repeat: 'weekly', weekday: 5, start: 660, duration: 90, until: null },
+        { id: 'c13', kind: 'group', groupId: 'g6', teacherId: 't4', roomId: 'r3', repeat: 'weekly', weekday: 5, start: 780, duration: 60, until: null },
+        { id: 'c14', kind: 'group', groupId: 'g7', teacherId: 't1', roomId: 'r1', repeat: 'weekly', weekday: 5, start: 960, duration: 120, until: null },
+        /* воскресенье */
+        { id: 'c15', kind: 'group', groupId: 'g6', teacherId: 't4', roomId: 'r2', repeat: 'weekly', weekday: 6, start: 720, duration: 60, until: null },
+        { id: 'c16', kind: 'individual', student: 'Свадебный танец · Орловы', teacherId: 't2', roomId: 'r1', repeat: 'once', weekday: null, start: 1020, duration: 90, until: null, date: null }
+      ]
+    };
+  }
+
+  let db;
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    db = raw ? JSON.parse(raw) : seed();
+    if (!db || !Array.isArray(db.classes)) db = seed();
+  } catch (e) { db = seed(); }
+
+  // одиночное занятие в примере ставим на ближайшую субботу, чтобы оно было видно
+  (function fixOnce() {
+    const once = db.classes.find(c => c.repeat === 'once' && !c.date);
+    if (once) {
+      const ws = startOfWeek(new Date());
+      once.date = dateKey(addDays(ws, 5));
+      save();
+    }
+  })();
+
+  function save() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(db)); } catch (e) { /* ignore */ }
+  }
+
+  const roomById = id => db.rooms.find(r => r.id === id);
+  const teacherById = id => db.teachers.find(t => t.id === id);
+  const groupById = id => db.groups.find(g => g.id === id);
+  const titleOf = c => c.kind === 'group'
+    ? (groupById(c.groupId) ? groupById(c.groupId).name : 'Групповое занятие')
+    : 'Индивидуальное · ' + (c.student || '');
+
+  /* ============================ состояние UI ============================ */
+  const ui = {
+    view: 'schedule',
+    weekOffset: 0,
+    filters: { teacher: '', room: '', kind: '' },
+    editingId: null
+  };
+
+  /* ============================ повторяемость ============================ */
+  function occursOn(c, day, dayIndex) {
+    if (c.repeat === 'once') return c.date === dateKey(day);
+    if (c.weekday !== dayIndex) return false;
+    if (c.until && dateKey(day) > c.until) return false;
+    return true;
+  }
+
+  function weekStartDate() {
+    const d = startOfWeek(new Date());
+    d.setDate(d.getDate() + ui.weekOffset * 7);
+    return d;
+  }
+
+  function weekOccurrences() {
+    const ws = weekStartDate();
+    const out = [];
+    for (let i = 0; i < 7; i++) {
+      const day = addDays(ws, i);
+      for (const c of db.classes) {
+        if (occursOn(c, day, i)) out.push({ c, day, i, start: c.start, end: c.start + c.duration });
+      }
+    }
+    return out;
+  }
+
+  function matchesFilters(o) {
+    const f = ui.filters;
+    return (!f.teacher || o.c.teacherId === f.teacher)
+      && (!f.room || o.c.roomId === f.room)
+      && (!f.kind || o.c.kind === f.kind);
+  }
+
+  // раскладка пересекающихся событий по «дорожкам»
+  function assignLanes(list) {
+    list.sort((a, b) => a.start - b.start || a.end - b.end);
+    const ends = [];
+    for (const it of list) {
+      let lane = ends.findIndex(e => e <= it.start);
+      if (lane === -1) { lane = ends.length; ends.push(it.end); }
+      else ends[lane] = it.end;
+      it.lane = lane;
+    }
+    const total = Math.max(ends.length, 1);
+    list.forEach(it => { it.lanes = total; });
+  }
+
+  // перебор всех вхождений занятия в диапазоне дат
+  function eachOccurrence(c, from, to, cb) {
+    if (c.repeat === 'once') {
+      if (!c.date) return;
+      const d = parseKey(c.date);
+      if (d >= from && d <= to) cb(d, c.start, c.start + c.duration);
+      return;
+    }
+    const d = new Date(from);
+    d.setHours(0, 0, 0, 0);
+    const shift = (c.weekday - ((d.getDay() + 6) % 7) + 7) % 7;
+    d.setDate(d.getDate() + shift);
+    let guard = 0;
+    while (d <= to && guard++ < 420) {
+      if (!c.until || dateKey(d) <= c.until) cb(new Date(d), c.start, c.start + c.duration);
+      d.setDate(d.getDate() + 7);
+    }
+  }
+
+  function occurrencesInRange(c, from, to) {
+    const arr = [];
+    eachOccurrence(c, from, to, (d, s, e) => arr.push({ key: dateKey(d), s, e }));
+    return arr;
+  }
+
+  /* ============================ проверки ============================ */
+  function findConflicts(cand, ignoreId) {
+    const from = addDays(startOfWeek(new Date()), -7);
+    from.setHours(0, 0, 0, 0);
+    const to = addDays(from, 380);
+    const mine = occurrencesInRange(cand, from, to);
+    const msgs = [];
+
+    for (const other of db.classes) {
+      if (other.id === ignoreId) continue;
+      const sameRoom = other.roomId === cand.roomId;
+      const sameTeacher = other.teacherId === cand.teacherId;
+      if (!sameRoom && !sameTeacher) continue;
+
+      // ищем первое пересечение — для серии достаточно одного сообщения
+      let hit = null;
+      for (const b of occurrencesInRange(other, from, to)) {
+        for (const a of mine) {
+          if (a.key === b.key && a.s < b.e && b.s < a.e) { hit = { a, b }; break; }
+        }
+        if (hit) break;
+      }
+      if (!hit) continue;
+
+      const d = parseKey(hit.a.key);
+      const dow = (d.getDay() + 6) % 7;
+      // конкретную дату показываем только если хоть одно занятие разовое
+      const dateSpecific = cand.repeat === 'once' || other.repeat === 'once';
+      const when = DAY_NAMES[dow] + ', ' + fmt(hit.b.s) + '–' + fmt(hit.b.e) +
+        (dateSpecific ? ', ' + fmtFull(d) : '');
+
+      if (sameRoom) {
+        msgs.push('Зал «' + ((roomById(cand.roomId) || {}).name || '') + '» уже занят: «' +
+          titleOf(other) + '» ' + when);
+      }
+      if (sameTeacher) {
+        msgs.push(((teacherById(cand.teacherId) || {}).name || 'Преподаватель') +
+          ' уже ведёт «' + titleOf(other) + '» ' + when);
+      }
+    }
+    return msgs;
+  }
+
+  function capacityWarning(cand) {
+    if (cand.kind !== 'group') return '';
+    const g = groupById(cand.groupId);
+    const r = roomById(cand.roomId);
+    if (g && r && g.students > r.capacity) {
+      return 'В группе «' + g.name + '» ' + g.students + ' учеников — это больше вместимости «' +
+        r.name + '» (' + r.capacity + '). Занятие можно сохранить, но стоит выбрать зал побольше.';
+    }
+    return '';
+  }
+
+  /* ============================ рендер: метрики и календарь ============================ */
+  function roomHours(roomId, occ) {
+    return occ.filter(o => o.c.roomId === roomId).reduce((s, o) => s + o.c.duration, 0) / 60;
+  }
+
+  function renderStats() {
+    const occ = weekOccurrences();
+    const indiv = occ.filter(o => o.c.kind === 'individual').length;
+    const hours = occ.reduce((s, o) => s + o.c.duration, 0) / 60;
+    const capPerRoom = (TOTAL_MIN / 60) * 7;
+    const capacityTotal = db.rooms.length * capPerRoom;
+    const used = db.rooms.reduce((s, r) => s + roomHours(r.id, occ), 0);
+    const load = capacityTotal ? Math.round(used / capacityTotal * 100) : 0;
+    const activeTeachers = new Set(occ.map(o => o.c.teacherId)).size;
+
+    qs('#stats').innerHTML =
+      '<div class="stat"><div class="stat-k">Занятий на неделе</div><div class="stat-v">' + occ.length + '</div>' +
+        '<div class="stat-s">' + indiv + ' индивидуальных</div></div>' +
+      '<div class="stat"><div class="stat-k">Загрузка залов</div><div class="stat-v">' + load + '%</div>' +
+        '<div class="stat-s">' + used.toFixed(1).replace('.', ',') + ' из ' + capacityTotal + ' ч</div></div>' +
+      '<div class="stat"><div class="stat-k">Преподаватели</div><div class="stat-v">' + activeTeachers + ' / ' + db.teachers.length + '</div>' +
+        '<div class="stat-s">задействованы на неделе</div></div>' +
+      '<div class="stat"><div class="stat-k">Часов в расписании</div><div class="stat-v">' + hours.toFixed(1).replace('.', ',') + '</div>' +
+        '<div class="stat-s">суммарно по всем занятиям</div></div>';
+  }
+
+  function eventHtml(o) {
+    const c = o.c;
+    const t = teacherById(c.teacherId) || { color: '#6d28d9', name: '' };
+    const top = (o.start - DAY_START) * PX_PER_MIN;
+    const height = Math.max(c.duration * PX_PER_MIN - 2, 24);
+    const compact = height < 54 ? ' compact' : '';
+    const meta = height >= 62
+      ? '<div class="evt-m">' + esc((roomById(c.roomId) || {}).name || '') + ' · ' + esc(t.name.split(' ')[0] || '') + '</div>'
+      : '';
+    const badge = c.kind === 'individual' ? '<span class="evt-badge">инд</span>' : '';
+    const left = 'calc(' + o.lane + ' * (100% / ' + o.lanes + ') + 2px)';
+    const width = 'calc(100% / ' + o.lanes + ' - 4px)';
+
+    return '<div class="evt' + compact + '" data-id="' + c.id + '"' +
+      ' style="top:' + top + 'px;height:' + height + 'px;left:' + left + ';width:' + width +
+      ';--tc:' + t.color + ';--tint:' + tint(t.color, 0.1) + '">' +
+      '<div class="evt-head"><span class="evt-time">' + fmt(c.start) + '</span>' + badge + '</div>' +
+      '<div class="evt-n">' + esc(titleOf(c)) + '</div>' + meta +
+      '</div>';
+  }
+
+  function nowLineHtml() {
+    const now = new Date();
+    const m = now.getHours() * 60 + now.getMinutes();
+    if (m < DAY_START || m > DAY_END) return '';
+    return '<div class="now-line" style="top:' + (m - DAY_START) * PX_PER_MIN + 'px"><i></i></div>';
+  }
+
+  function renderSchedule() {
+    const ws = weekStartDate();
+    qs('#week-label').textContent = fmtShort(ws) + ' — ' + fmtFull(addDays(ws, 6));
+    qs('#week-note').textContent = ui.weekOffset === 0
+      ? 'текущая неделя'
+      : (ui.weekOffset > 0 ? '+' + ui.weekOffset + ' нед.' : ui.weekOffset + ' нед.');
+
+    const occ = weekOccurrences().filter(matchesFilters);
+    const byDay = [[], [], [], [], [], [], []];
+    occ.forEach(o => byDay[o.i].push(o));
+    byDay.forEach(assignLanes);
+
+    const totalH = TOTAL_MIN * PX_PER_MIN;
+    const nowKey = dateKey(new Date());
+    const hourH = 60 * PX_PER_MIN;
+
+    let head = '<div class="cal-corner"></div>';
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(ws, i);
+      const isToday = dateKey(d) === nowKey;
+      head += '<div class="cal-day-head' + (isToday ? ' today' : '') + '">' +
+        '<span>' + DAY_NAMES[i] + '</span><b>' + d.getDate() + '</b></div>';
+    }
+
+    let times = '';
+    for (let m = DAY_START; m <= DAY_END; m += 60) {
+      times += '<div class="cal-time" style="top:' + (m - DAY_START) * PX_PER_MIN + 'px">' + fmt(m) + '</div>';
+    }
+
+    let cols = '';
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(ws, i);
+      const isToday = dateKey(d) === nowKey;
+      cols += '<div class="cal-col' + (isToday ? ' today' : '') + '" data-day="' + i + '"' +
+        ' style="height:' + totalH + 'px">' +
+        byDay[i].map(eventHtml).join('') +
+        (isToday ? nowLineHtml() : '') +
+        '</div>';
+    }
+
+    qs('#calendar').innerHTML =
+      '<div class="cal-scroll"><div class="cal-inner">' +
+        '<div class="cal-head">' + head + '</div>' +
+        '<div class="cal-body" style="--hour-h:' + hourH + 'px">' +
+          '<div class="cal-times">' + times + '</div>' + cols +
+        '</div>' +
+      '</div></div>';
+
+    qs('#legend').innerHTML = db.teachers.map(t =>
+      '<span><i style="background:' + t.color + '"></i>' + esc(t.name) + ' · ' + esc(t.spec) + '</span>'
+    ).join('');
+
+    bindCalendar();
+  }
+
+  function bindCalendar() {
+    qsa('.cal-col').forEach(col => {
+      col.addEventListener('click', e => {
+        const evt = e.target.closest('.evt');
+        if (evt) { openModal({ id: evt.dataset.id }); return; }
+
+        const rect = col.getBoundingClientRect();
+        const y = clamp(e.clientY - rect.top, 0, TOTAL_MIN * PX_PER_MIN - 30);
+        let mins = DAY_START + Math.round(y / PX_PER_MIN / 15) * 15;
+        mins = clamp(mins, DAY_START, DAY_END - 45);
+        openModal({ weekday: Number(col.dataset.day), start: mins });
+      });
+    });
+  }
+
+  /* ============================ рендер: таблица занятий ============================ */
+  function renderClasses() {
+    const rows = db.classes.slice().sort((a, b) => {
+      const ka = a.repeat === 'once' ? (a.date || '') : String(a.weekday).padStart(2, '0');
+      const kb = b.repeat === 'once' ? (b.date || '') : String(b.weekday).padStart(2, '0');
+      return ka < kb ? -1 : ka > kb ? 1 : a.start - b.start;
+    }).map(c => {
+      const t = teacherById(c.teacherId) || {};
+      const r = roomById(c.roomId) || {};
+      const when = c.repeat === 'once'
+        ? (c.date ? fmtFull(parseKey(c.date)) + ', ' + fmt(c.start) : 'дата не задана')
+        : DAY_FULL[c.weekday] + ', ' + fmt(c.start) + (c.until ? ' · до ' + fmtFull(parseKey(c.until)) : '');
+
+      return '<tr>' +
+        '<td><div class="tname">' + esc(titleOf(c)) + '</div>' +
+          '<div class="muted" style="font-size:12px">' + esc(r.name || '') + '</div></td>' +
+        '<td><span class="pill ' + (c.kind === 'group' ? 'group' : 'indiv') + '">' +
+          (c.kind === 'group' ? 'групповое' : 'индивидуальное') + '</span></td>' +
+        '<td>' + esc(t.name || '') + '</td>' +
+        '<td class="muted">' + when + '</td>' +
+        '<td>' + c.duration + ' мин</td>' +
+        '<td><span class="pill ' + (c.repeat === 'weekly' ? 'weekly' : 'once') + '">' +
+          (c.repeat === 'weekly' ? 'еженедельно' : 'разовое') + '</span></td>' +
+        '<td style="text-align:right; white-space:nowrap">' +
+          '<button class="btn ghost icon" data-edit="' + c.id + '" title="Изменить">✎</button>' +
+          '<button class="btn ghost icon danger" data-remove="' + c.id + '" title="Удалить">✕</button>' +
+        '</td></tr>';
+    }).join('');
+
+    qs('#classes-wrap').innerHTML =
+      '<table><thead><tr>' +
+        '<th>Занятие</th><th>Тип</th><th>Преподаватель</th><th>Когда</th><th>Длительность</th><th>Повтор</th><th></th>' +
+      '</tr></thead><tbody>' + (rows || '<tr><td colspan="7" class="muted" style="padding:24px">Пока нет ни одного занятия</td></tr>') + '</tbody></table>';
+
+    qsa('[data-edit]').forEach(b => b.addEventListener('click', () => openModal({ id: b.dataset.edit })));
+    qsa('[data-remove]').forEach(b => b.addEventListener('click', () => {
+      if (removeClass(b.dataset.remove)) render();
+    }));
+  }
+
+  /* ============================ рендер: залы и преподаватели ============================ */
+  function renderRooms() {
+    const occ = weekOccurrences();
+    const capPerRoom = (TOTAL_MIN / 60) * 7;
+
+    qs('#rooms-grid').innerHTML = db.rooms.map(r => {
+      const h = roomHours(r.id, occ);
+      const pct = Math.round(h / capPerRoom * 100);
+      const count = occ.filter(o => o.c.roomId === r.id).length;
+      const used = db.classes.some(c => c.roomId === r.id);
+
+      return '<article class="room-card">' +
+        '<header><h3>' + esc(r.name) + '</h3><span class="pill">' + r.capacity + ' мест</span></header>' +
+        '<p class="muted" style="margin:6px 0 0; font-size:12.5px">' + esc(r.note || '') + '</p>' +
+        '<div class="bar"><i style="width:' + Math.min(pct, 100) + '%"></i></div>' +
+        '<div class="room-meta"><span>' + h.toFixed(1).replace('.', ',') + ' ч из ' + capPerRoom + ' ч в неделю</span><b>' + pct + '%</b></div>' +
+        '<div class="room-meta"><span>' + count + ' занятий на неделе</span>' +
+          '<button class="btn ghost danger" data-del-room="' + r.id + '"' + (used ? ' disabled title="Зал используется в расписании"' : '') + '>Удалить</button>' +
+        '</div></article>';
+    }).join('');
+
+    qsa('[data-del-room]').forEach(b => b.addEventListener('click', () => {
+      const room = roomById(b.dataset.delRoom);
+      if (!room) return;
+      if (db.classes.some(c => c.roomId === room.id)) return;
+      if (!confirm('Удалить зал «' + room.name + '»?')) return;
+      db.rooms = db.rooms.filter(r => r.id !== room.id);
+      save(); renderFilters(); render(); toast('Зал удалён');
+    }));
+
+    const load = db.teachers.map(t => {
+      const h = occ.filter(o => o.c.teacherId === t.id).reduce((s, o) => s + o.c.duration, 0) / 60;
+      return '<div class="teacher-row"><span class="dot" style="background:' + t.color + '"></span>' +
+        '<b>' + esc(t.name) + '</b><span class="muted">' + esc(t.spec) + '</span>' +
+        '<span class="spacer" style="flex:1"></span>' +
+        '<span class="muted">' + h.toFixed(1).replace('.', ',') + ' ч/нед</span></div>';
+    }).join('');
+
+    qs('#teachers-panel').innerHTML = '<h3>Преподаватели и нагрузка</h3>' + load;
+  }
+
+  /* ============================ фильтры ============================ */
+  function renderFilters() {
+    const t = qs('#f-teacher');
+    t.innerHTML = '<option value="">Все преподаватели</option>' +
+      db.teachers.map(x => '<option value="' + x.id + '">' + esc(x.name) + '</option>').join('');
+    t.value = ui.filters.teacher;
+
+    const r = qs('#f-room');
+    r.innerHTML = '<option value="">Все залы</option>' +
+      db.rooms.map(x => '<option value="' + x.id + '">' + esc(x.name) + '</option>').join('');
+    r.value = ui.filters.room;
+
+    qs('#f-kind').value = ui.filters.kind;
+  }
+
+  /* ============================ модальное окно ============================ */
+  const modal = qs('#modal');
+  const form = qs('#class-form');
+
+  function setSeg(segId, attr, value) {
+    qsa('#' + segId + ' button').forEach(b => b.classList.toggle('active', b.dataset[attr] === value));
+  }
+
+  function syncVisibility() {
+    const kind = qs('#f-kind-input').value;
+    const repeat = qs('#f-repeat').value;
+    qs('#row-group').hidden = kind !== 'group';
+    qs('#row-student').hidden = kind !== 'individual';
+    qs('#row-weekday').hidden = repeat !== 'weekly';
+    qs('#row-until').hidden = repeat !== 'weekly';
+    qs('#row-date').hidden = repeat !== 'once';
+  }
+
+  function currentFormValues() {
+    return {
+      kind: qs('#f-kind-input').value,
+      repeat: qs('#f-repeat').value,
+      groupId: qs('#f-group').value || null,
+      student: qs('#f-student').value.trim(),
+      teacherId: qs('#f-teacher-select').value,
+      roomId: qs('#f-room-select').value,
+      weekday: Number(qs('#f-weekday').value),
+      date: qs('#f-date').value,
+      start: toMinutes(qs('#f-start').value),
+      duration: Number(qs('#f-duration').value),
+      until: qs('#f-until').value || null
+    };
+  }
+
+  function updateCapacityHint() {
+    const v = currentFormValues();
+    const msg = capacityWarning(v);
+    const box = qs('#capacity-hint');
+    box.textContent = msg;
+    box.hidden = !msg;
+  }
+
+  function openModal(data) {
+    data = data || {};
+    ui.editingId = data.id || null;
+    const c = data.id ? db.classes.find(x => x.id === data.id) : null;
+
+    qs('#modal-title').textContent = c ? 'Редактирование занятия' : 'Новое занятие';
+    qs('#modal-sub').textContent = c
+      ? 'Изменения применятся ко всей серии, если занятие повторяющееся.'
+      : 'Конфликты по залу и преподавателю проверяются автоматически.';
+    qs('#btn-delete').hidden = !c;
+    qs('#modal-errors').hidden = true;
+
+    // селекты
+    qs('#f-group').innerHTML = db.groups.map(g =>
+      '<option value="' + g.id + '">' + esc(g.name) + ' · ' + g.students + ' чел.</option>').join('');
+    qs('#f-teacher-select').innerHTML = db.teachers.map(t =>
+      '<option value="' + t.id + '">' + esc(t.name) + ' · ' + esc(t.spec) + '</option>').join('');
+    qs('#f-room-select').innerHTML = db.rooms.map(r =>
+      '<option value="' + r.id + '">' + esc(r.name) + ' · до ' + r.capacity + ' чел.</option>').join('');
+    qs('#f-weekday').innerHTML = DAY_FULL.map((d, i) =>
+      '<option value="' + i + '">' + d + '</option>').join('');
+    qs('#f-duration').innerHTML = DURATIONS.map(d =>
+      '<option value="' + d + '">' + d + ' мин</option>').join('');
+
+    // значения
+    qs('#f-kind-input').value = c ? c.kind : (data.kind || 'group');
+    qs('#f-repeat').value = c ? c.repeat : (data.repeat || 'weekly');
+    qs('#f-group').value = c && c.groupId ? c.groupId : (db.groups[0] ? db.groups[0].id : '');
+    qs('#f-student').value = c && c.student ? c.student : '';
+    qs('#f-teacher-select').value = c ? c.teacherId : (db.teachers[0] ? db.teachers[0].id : '');
+    qs('#f-room-select').value = c ? c.roomId : (db.rooms[0] ? db.rooms[0].id : '');
+    qs('#f-weekday').value = c && c.weekday !== null ? String(c.weekday) : String(data.weekday ?? 0);
+    qs('#f-date').value = c && c.date ? c.date : (data.date || dateKey(new Date()));
+    qs('#f-start').value = fmt(c ? c.start : (data.start ?? 1080));
+    qs('#f-duration').value = String(c ? c.duration : 60);
+    qs('#f-until').value = c && c.until ? c.until : '';
+
+    setSeg('seg-kind', 'kind', qs('#f-kind-input').value);
+    setSeg('seg-repeat', 'repeat', qs('#f-repeat').value);
+    syncVisibility();
+    updateCapacityHint();
+
+    modal.hidden = false;
+    setTimeout(() => qs('#f-start').focus(), 40);
+  }
+
+  function closeModal() {
+    modal.hidden = true;
+    ui.editingId = null;
+  }
+
+  qsa('#seg-kind button').forEach(b => b.addEventListener('click', () => {
+    qs('#f-kind-input').value = b.dataset.kind;
+    setSeg('seg-kind', 'kind', b.dataset.kind);
+    const v = currentFormValues();
+    if (v.kind === 'individual' && !qs('#f-student').value) qs('#f-student').value = '';
+    syncVisibility();
+    updateCapacityHint();
+  }));
+
+  qsa('#seg-repeat button').forEach(b => b.addEventListener('click', () => {
+    qs('#f-repeat').value = b.dataset.repeat;
+    setSeg('seg-repeat', 'repeat', b.dataset.repeat);
+    syncVisibility();
+  }));
+
+  qs('#f-group').addEventListener('change', () => {
+    const g = groupById(qs('#f-group').value);
+    if (g && !ui.editingId) qs('#f-teacher-select').value = g.teacherId;
+    updateCapacityHint();
+  });
+  qs('#f-room-select').addEventListener('change', updateCapacityHint);
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const v = currentFormValues();
+    const errors = [];
+
+    if (v.kind === 'group' && !v.groupId) errors.push('Выберите группу.');
+    if (v.kind === 'individual' && !v.student) errors.push('Укажите имя ученика.');
+    if (!v.teacherId) errors.push('Выберите преподавателя.');
+    if (!v.roomId) errors.push('Выберите зал.');
+    if (Number.isNaN(v.start)) errors.push('Укажите время начала.');
+    if (!v.duration) errors.push('Укажите длительность.');
+    if (!Number.isNaN(v.start) && (v.start < DAY_START || v.start + v.duration > DAY_END)) {
+      errors.push('Занятие должно полностью укладываться в рабочий день студии 09:00–22:00.');
+    }
+    if (v.repeat === 'once' && !v.date) errors.push('Укажите дату разового занятия.');
+    if (v.repeat === 'weekly' && v.until && v.until < dateKey(new Date())) {
+      errors.push('Дата окончания серии уже прошла.');
+    }
+
+    const cand = {
+      id: ui.editingId || uid('c'),
+      kind: v.kind,
+      groupId: v.kind === 'group' ? v.groupId : null,
+      student: v.kind === 'individual' ? v.student : null,
+      teacherId: v.teacherId,
+      roomId: v.roomId,
+      repeat: v.repeat,
+      weekday: v.repeat === 'weekly' ? v.weekday : null,
+      date: v.repeat === 'once' ? v.date : null,
+      start: v.start,
+      duration: v.duration,
+      until: v.repeat === 'weekly' ? v.until : null
+    };
+
+    if (!errors.length) errors.push(...findConflicts(cand, ui.editingId));
+
+    if (errors.length) {
+      const box = qs('#modal-errors');
+      box.innerHTML = '<b>Не удалось сохранить занятие</b><ul>' +
+        errors.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>';
+      box.hidden = false;
+      return;
+    }
+
+    if (ui.editingId) {
+      const i = db.classes.findIndex(x => x.id === ui.editingId);
+      if (i >= 0) db.classes[i] = cand; else db.classes.push(cand);
+    } else {
+      db.classes.push(cand);
+    }
+
+    save();
+    closeModal();
+    render();
+
+    const warn = capacityWarning(cand);
+    toast(warn ? 'Сохранено. ' + warn : 'Занятие сохранено');
+  });
+
+  qs('#btn-delete').addEventListener('click', () => {
+    if (!ui.editingId) return;
+    if (removeClass(ui.editingId)) { closeModal(); render(); }
+  });
+
+  qs('#btn-cancel').addEventListener('click', closeModal);
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !modal.hidden) closeModal(); });
+
+  function removeClass(id) {
+    const c = db.classes.find(x => x.id === id);
+    if (!c) return false;
+    const label = c.repeat === 'weekly'
+      ? 'Удалить всю серию занятий?'
+      : 'Удалить занятие?';
+    if (!confirm(label + '\n\n' + titleOf(c) + ' · ' + fmt(c.start))) return false;
+    db.classes = db.classes.filter(x => x.id !== id);
+    save();
+    toast('Занятие удалено');
+    return true;
+  }
+
+  /* ============================ навигация и мелочи ============================ */
+  qsa('.tab').forEach(tab => tab.addEventListener('click', () => {
+    ui.view = tab.dataset.view;
+    qsa('.tab').forEach(x => x.classList.toggle('active', x === tab));
+    qs('#view-schedule').hidden = ui.view !== 'schedule';
+    qs('#view-classes').hidden = ui.view !== 'classes';
+    qs('#view-rooms').hidden = ui.view !== 'rooms';
+  }));
+
+  qs('#btn-new').addEventListener('click', () => openModal({}));
+  qs('#prev-week').addEventListener('click', () => { ui.weekOffset--; renderSchedule(); });
+  qs('#next-week').addEventListener('click', () => { ui.weekOffset++; renderSchedule(); });
+  qs('#today').addEventListener('click', () => { ui.weekOffset = 0; renderSchedule(); });
+
+  qs('#f-teacher').addEventListener('change', e => { ui.filters.teacher = e.target.value; renderSchedule(); });
+  qs('#f-room').addEventListener('change', e => { ui.filters.room = e.target.value; renderSchedule(); });
+  qs('#f-kind').addEventListener('change', e => { ui.filters.kind = e.target.value; renderSchedule(); });
+
+  qs('#room-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = qs('#room-name').value.trim();
+    const cap = Number(qs('#room-cap').value);
+    const note = qs('#room-note').value.trim();
+    if (!name) return toast('Укажите название зала', true);
+    if (db.rooms.some(r => r.name.toLowerCase() === name.toLowerCase())) {
+      return toast('Зал с таким названием уже есть', true);
+    }
+    if (!cap || cap < 1) return toast('Укажите вместимость больше нуля', true);
+
+    db.rooms.push({ id: uid('r'), name: name, capacity: cap, note: note });
+    save();
+    qs('#room-form').reset();
+    qs('#room-cap').value = 15;
+    renderFilters();
+    render();
+    toast('Зал добавлен');
+  });
+
+  let toastTimer = null;
+  function toast(msg, isError) {
+    const el = qs('#toast');
+    el.textContent = msg;
+    el.classList.toggle('err', !!isError);
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 3600);
+  }
+
+  /* ============================ старт ============================ */
+  function render() {
+    renderSchedule();
+    renderStats();
+    renderClasses();
+    renderRooms();
+  }
+
+  renderFilters();
+  render();
+})();
+</script>
+</body>
+</html>
