@@ -4,7 +4,9 @@ import { z } from 'zod';
 import { AppError, errorBody } from '../../errors';
 import { requireAccess } from '../access/guard';
 import { isRole } from '../access/rbac';
-import { findUserByEmail } from '../auth/repository';
+import { randomBytes } from 'node:crypto';
+import { hashPassword } from '../auth/password';
+import { findUserByEmail, insertUser } from '../auth/repository';
 import {
   addMember,
   findMembership,
@@ -97,8 +99,23 @@ export async function membersRoutes(
       );
       if (!membership) return;
 
-      const user = await findUserByEmail(pool, parsed.data.email);
-      if (!user) {
+      const existing = await findUserByEmail(pool, parsed.data.email);
+      let userId: string;
+      let temporaryPassword: string | undefined;
+
+      if (existing) {
+        userId = existing.id;
+      } else if (onlyStudents) {
+        // STF-9: ученика заводит администратор. SMTP нет, поэтому временный пароль
+        // возвращается один раз в ответе и должен быть передан ученику лично.
+        temporaryPassword = randomBytes(9).toString('base64url');
+        const account = await insertUser(pool, {
+          email: parsed.data.email,
+          passwordHash: await hashPassword(temporaryPassword),
+          displayName: parsed.data.email.split('@')[0] ?? null
+        });
+        userId = account.id;
+      } else {
         return reply
           .code(404)
           .send(
@@ -109,8 +126,13 @@ export async function membersRoutes(
           );
       }
 
-      const created = await addMember(pool, membership.studioId, user.id, parsed.data.roles);
-      return reply.code(201).send({ membership: created });
+      const created = await addMember(pool, membership.studioId, userId, parsed.data.roles);
+      const payload: Record<string, unknown> = { membership: created };
+      if (temporaryPassword) {
+        payload.accountCreated = true;
+        payload.temporaryPassword = temporaryPassword;
+      }
+      return reply.code(201).send(payload);
     }
   );
 
@@ -191,3 +213,4 @@ export async function membersRoutes(
     }
   );
 }
+
