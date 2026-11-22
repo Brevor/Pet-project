@@ -26,7 +26,7 @@ export function StaffTab({ studioId }: { studioId: string }) {
       api<{ items: Member[] }>(`/studios/${studioId}/members`),
       api<MeResponse>('/me')
     ]);
-    setMembers(list.items);
+    setMembers(list.items.filter((member) => member.roles.some((role) => role !== 'student')));
     setCurrentEmail(me.user.email);
     const membership = me.memberships.find((item) => item.studioId === studioId);
     setIsOwner(membership?.roles.includes('owner') ?? false);

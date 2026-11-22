@@ -16,7 +16,7 @@ export function StudentsTab({
 
   const load = useCallback(async () => {
     const data = await api<{ items: Member[] }>(`/studios/${studioId}/members?role=student`);
-    setStudents(data.items);
+    setStudents(data.items.filter((student) => student.roles.every((role) => role === 'student')));
   }, [studioId]);
 
   useEffect(() => {

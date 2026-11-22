@@ -294,3 +294,25 @@ test('роль не может ссылаться на членство чужо
     );
   });
 });
+
+test('цвет курса: дефолт и CHECK по палитре', { skip }, async () => {
+  await withTransaction(async (client) => {
+    const seed = await seedStudio(client);
+
+    const defaults = await client.query<{ color: string }>(
+      'SELECT color FROM courses WHERE id = $1',
+      [seed.courseId]
+    );
+    assert.equal(defaults.rows[0]!.color, 'violet');
+
+    await assert.rejects(
+      () =>
+        client.query(
+          `INSERT INTO courses (studio_id, name, kind, default_duration_min, capacity, color)
+           VALUES ($1, 'Neon', 'group', 90, 10, 'chartreuse')`,
+          [seed.studioId]
+        ),
+      (error: { code?: string }) => error.code === '23514'
+    );
+  });
+});

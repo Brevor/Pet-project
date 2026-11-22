@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import {
+  COURSE_COLORS,
   KIND_LABELS,
   LEVEL_LABELS,
+  courseColorHex,
   type Course,
   type Teacher
 } from '../types';
@@ -18,6 +20,7 @@ interface CourseForm {
   kind: string;
   duration: number;
   capacity: number;
+  color: string;
   teacherMembershipId: string;
 }
 
@@ -28,6 +31,7 @@ const emptyForm: CourseForm = {
   kind: 'group',
   duration: 90,
   capacity: 12,
+  color: 'violet',
   teacherMembershipId: ''
 };
 
@@ -71,6 +75,7 @@ export function CoursesTab({ studioId }: { studioId: string }) {
       kind: value.kind,
       defaultDurationMin: value.duration,
       capacity: value.capacity,
+      color: value.color,
       teacherMembershipId: value.teacherMembershipId || null
     };
   }
@@ -99,6 +104,7 @@ export function CoursesTab({ studioId }: { studioId: string }) {
       kind: course.kind,
       duration: course.defaultDurationMin,
       capacity: course.capacity,
+      color: course.color,
       teacherMembershipId: course.teacherMembershipId ?? ''
     });
     setError('');
@@ -224,6 +230,20 @@ export function CoursesTab({ studioId }: { studioId: string }) {
           />
         </label>
         <label className="text-sm">
+          <span className="block text-slate-600">Цвет в календаре</span>
+          <select
+            value={form.color}
+            onChange={(event) => update({ color: event.target.value })}
+            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+          >
+            {COURSE_COLORS.map((item) => (
+              <option key={item.code} value={item.code}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
           <span className="block text-slate-600">Преподаватель</span>
           <select
             value={form.teacherMembershipId}
@@ -336,6 +356,20 @@ export function CoursesTab({ studioId }: { studioId: string }) {
                           />
                         </label>
                         <label className="text-sm">
+                          <span className="block text-slate-600">Цвет в календаре</span>
+                          <select
+                            value={editForm.color}
+                            onChange={(event) => updateEdit({ color: event.target.value })}
+                            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+                          >
+                            {COURSE_COLORS.map((item) => (
+                              <option key={item.code} value={item.code}>
+                                {item.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="text-sm">
                           <span className="block text-slate-600">Преподаватель</span>
                           <select
                             value={editForm.teacherMembershipId}
@@ -372,7 +406,14 @@ export function CoursesTab({ studioId }: { studioId: string }) {
               ) : (
                 <tr key={course.id} className="border-t border-slate-100">
                   <td className="px-4 py-2">
-                    <div className="font-medium">{course.name}</div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="h-3 w-3 shrink-0 rounded-full"
+                        style={{ backgroundColor: courseColorHex(course.color) }}
+                        title={course.color}
+                      />
+                      <span className="font-medium">{course.name}</span>
+                    </div>
                     <div className="text-xs text-slate-500">{course.direction ?? '—'}</div>
                   </td>
                   <td className="px-4 py-2 text-slate-600">{LEVEL_LABELS[course.level]}</td>

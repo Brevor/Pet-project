@@ -3,10 +3,17 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 import { errorBody } from '../../errors';
 import { requireAccess } from '../access/guard';
-import { createCourse, deleteCourse, listCourses, updateCourse } from './repository';
+import {
+  COURSE_COLORS,
+  createCourse,
+  deleteCourse,
+  listCourses,
+  updateCourse
+} from './repository';
 
 const LEVELS = ['beginner', 'intermediate', 'advanced', 'none'] as const;
 const KINDS = ['group', 'individual'] as const;
+const COLORS = COURSE_COLORS;
 
 const baseCourse = {
   name: z.string().min(2).max(140),
@@ -14,7 +21,8 @@ const baseCourse = {
   level: z.enum(LEVELS),
   kind: z.enum(KINDS),
   defaultDurationMin: z.union([z.literal(45), z.literal(60), z.literal(75), z.literal(90), z.literal(120)]),
-  capacity: z.number().int().min(1).max(500)
+  capacity: z.number().int().min(1).max(500),
+  color: z.enum(COLORS).optional()
 };
 
 const createBody = z.object({
@@ -29,6 +37,7 @@ const patchBody = z
     kind: baseCourse.kind.optional(),
     defaultDurationMin: baseCourse.defaultDurationMin.optional(),
     capacity: baseCourse.capacity.optional(),
+    color: z.enum(COLORS).optional(),
     teacherMembershipId: z.string().uuid().nullable().optional(),
     archived: z.boolean().optional()
   })
