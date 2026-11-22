@@ -8,9 +8,9 @@
 
 ## 1. Текущее состояние
 
-- Каркас и схема БД готовы: монорепо `server/` + `client/`, 4 миграции накатаны в локальный
-  PostgreSQL 18 (база `studioflow`).
-- Проверки: typecheck (server, client), eslint, 3 API-теста, 5 интеграционных тестов БД — зелёные.
+- Каркас, схема БД и аутентификация готовы: монорепо `server/` + `client/`, 4 миграции в
+  PostgreSQL 18, `register`/`login`/`me` на JWT + argon2.
+- Проверки: typecheck (server, client), eslint, 3 API-теста, 5 тестов БД, 8 тестов auth — зелёные.
 - D1 подтверждён, D6 закрыт (локальный PostgreSQL, `trust` на 127.0.0.1).
 - Docker установлен, но демон не запущен — для локальной разработки не нужен.
 - Клиентская сборка `vite build` в песочнице не запускается (см. §4.2).
@@ -144,13 +144,13 @@ D1 подтверждён пользователем, D6 закрыт: PostgreSQ
 | T-08 | `class_series`, `class_sessions`, exclusion-ограничения | `migrations/004_schedule.sql` | пересечения ловятся БД (23P01) | ✅ тесты: зал, преподаватель, отменённый слот |
 | T-09 | Слой доступа: пул, транзакции, студийно-ограниченные репозитории | `server/src/db/repositories/*.ts` | запрос без `studioId` невозможен; тест изоляции | ⏳ следующая задача |
 
-### M2. Аутентификация и права
+### M2. Аутентификация и права — T-10, T-11 выполнены 2026-11-22
 
-| ID | Задача | Файлы | Готово, когда | Зависит от |
+| ID | Задача | Файлы | Готово, когда | Статус |
 |---|---|---|---|---|
-| T-10 | `POST /auth/register`, `POST /auth/login`, JWT, argon2 | `server/src/modules/auth/*`, `migrations/` (нет новых таблиц) | тесты: 201/200, `409 EMAIL_TAKEN`, `401 INVALID_CREDENTIALS` | T-09 |
-| T-11 | `GET /me` с членствами и ролями | `server/src/modules/me/*` | тест: пустой `memberships` для нового аккаунта (ACC-4) | T-10 |
-| T-12 | `tenant-guard` + `rbac` (карта прав из `architecture.md` §8) | `server/src/modules/access/*` | тесты: 403 `NOT_A_MEMBER`, 403 `FORBIDDEN`, объединение ролей (ROL-2) | T-11 |
+| T-10 | `POST /auth/register`, `POST /auth/login`, JWT, argon2 | `server/src/modules/auth/*` | 201/200, `409 EMAIL_TAKEN`, `401 INVALID_CREDENTIALS` | ✅ 8 тестов на реальной БД |
+| T-11 | `GET /me` с членствами и ролями | `server/src/modules/auth/routes.ts`, `server/src/modules/access/repository.ts` | пустой `memberships` у нового аккаунта | ✅ тест ACC-4 |
+| T-12 | `tenant-guard` + `rbac` (карта прав из `architecture.md` §8) | `server/src/modules/access/*` | 403 `NOT_A_MEMBER`, 403 `FORBIDDEN`, объединение ролей | ⏳ следующая задача |
 
 ### M3. Студия и персонал
 
