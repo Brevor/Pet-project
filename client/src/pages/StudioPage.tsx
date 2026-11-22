@@ -215,7 +215,7 @@ export function StudioPage({ onLogout }: { onLogout: () => void }) {
       </nav>
 
       {tab === 'staff' && <StaffTab studioId={studioId} />}
-      {tab === 'students' && <StudentsTab studioId={studioId} />}
+      {tab === 'students' && <StudentsTab studioId={studioId} canExclude={canManageStaff} />}
       {tab === 'rooms' && <RoomsTab studioId={studioId} />}
       {tab === 'courses' && <CoursesTab studioId={studioId} />}
       {tab === 'schedule' && <ScheduleTab studioId={studioId} canManage={canManageSchedule} />}

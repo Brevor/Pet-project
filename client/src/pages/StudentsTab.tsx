@@ -2,7 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import type { Member } from '../types';
 
-export function StudentsTab({ studioId }: { studioId: string }) {
+export function StudentsTab({
+  studioId,
+  canExclude
+}: {
+  studioId: string;
+  canExclude: boolean;
+}) {
   const [students, setStudents] = useState<Member[]>([]);
   const [email, setEmail] = useState('');
   const [temporaryPassword, setTemporaryPassword] = useState('');
@@ -91,7 +97,7 @@ export function StudentsTab({ studioId }: { studioId: string }) {
           <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
             <th className="py-2">Ученик</th>
             <th className="py-2">Статус</th>
-            <th className="py-2" />
+            {canExclude && <th className="py-2" />}
           </tr>
         </thead>
         <tbody>
@@ -102,15 +108,17 @@ export function StudentsTab({ studioId }: { studioId: string }) {
                 <div className="text-xs text-slate-500">{student.email}</div>
               </td>
               <td className="py-2 text-slate-600">{student.status}</td>
-              <td className="py-2 text-right">
-                <button
-                  type="button"
-                  onClick={() => removeStudent(student)}
-                  className="rounded px-2 py-1 text-xs text-rose-600 hover:bg-rose-50"
-                >
-                  Исключить
-                </button>
-              </td>
+              {canExclude && (
+                <td className="py-2 text-right">
+                  <button
+                    type="button"
+                    onClick={() => removeStudent(student)}
+                    className="rounded px-2 py-1 text-xs text-rose-600 hover:bg-rose-50"
+                  >
+                    Исключить
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

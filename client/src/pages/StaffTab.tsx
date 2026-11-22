@@ -177,7 +177,7 @@ export function StaffTab({ studioId }: { studioId: string }) {
         <tbody>
           {members.map((member) => {
             const isSelf = member.email === currentEmail;
-            const canEdit = !isSelf;
+            const canEdit = !isSelf && !member.roles.includes('owner');
             return (
               <tr key={member.membershipId} className="border-t border-slate-100">
                 <td className="py-2">
@@ -193,7 +193,7 @@ export function StaffTab({ studioId }: { studioId: string }) {
                       onSubmit={(event) => saveRoles(event, member.membershipId)}
                       className="flex flex-wrap gap-2"
                     >
-                      {ALL_ROLES.filter((role) => role !== 'owner' || isOwner).map((role) => (
+                      {ALL_ROLES.filter((role) => role !== 'owner').map((role) => (
                         <label key={role} className="flex items-center gap-1 text-xs">
                           <input
                             type="checkbox"
