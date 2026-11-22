@@ -2,8 +2,8 @@ packages:
   - server
   - client
 
-onlyBuiltDependencies:
-  - esbuild
-
 nodeLinker: hoisted
+
+allowBuilds:
+  esbuild: true
 
