@@ -165,7 +165,7 @@ UNIQUE `(studio_id, lower(name))`; UNIQUE `(studio_id, id)`.
 ### 5.8. `class_series` — правило повторения
 
 `id uuid PK`, `studio_id`, `course_id`, `room_id`, `teacher_membership_id uuid FK → memberships`,
-`weekdays smallint[] NOT NULL` (каждое 1–7), `start_time time NOT NULL`, `duration_min int NOT NULL`,
+`weekdays smallint[] NOT NULL` (каждое 1–7; CHECK `class_series_weekdays_range` — миграция 007), `start_time time NOT NULL`, `duration_min int NOT NULL`,
 `starts_on date NOT NULL`, `until date NOT NULL`, `created_at timestamptz`.
 CHECK `until >= starts_on`; CHECK `array_length(weekdays,1) > 0`.
 
@@ -344,7 +344,7 @@ JWT: `sub` (user id), `iat`, `exp` (24 ч). Студия в токен не за
 - `studioId` присутствует в пути каждого студийного эндпоинта и обязателен в репозиториях —
   запрос без него невозможен по типу.
 - Составные внешние ключи исключают межстудийные связи, в том числе для
-  `courses.teacher_membership_id` (миграция 006).
+  `courses.teacher_membership_id` (миграция 006) и `membership_roles` (миграция 007).
 - RLS в Фазе 1 не включается: изоляция держится на уровне доступа к данным плюс тест NFR-1.
   Включение RLS — отдельное решение, не для текущей фазы.
 
