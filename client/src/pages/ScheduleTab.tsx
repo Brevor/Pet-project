@@ -1,35 +1,128 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import { DAY_LABELS, type Course, type Room, type SessionItem, type Teacher } from '../types';
+import {
+  DAY_LABELS,
+  type Course,
+  type Room,
+  type SessionItem,
+  type StudioView,
+  type Teacher,
+  type WorkingHour
+} from '../types';
 
-function isoDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+const PX_PER_MIN = 1.2;
+const MINUTE_STEP = 15;
+
+function studioDateKey(moment: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(moment);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? '00';
+  return `${value('year')}-${value('month')}-${value('day')}`;
 }
 
-function weekBounds(): { from: string; to: string } {
-  const today = new Date();
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  return { from: isoDate(monday), to: isoDate(sunday) };
+function addDays(dateKey: string, days: number): string {
+  const date = new Date(`${dateKey}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
-function timeLabel(iso: string): string {
-  return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+function mondayOf(dateKey: string): string {
+  const date = new Date(`${dateKey}T12:00:00Z`);
+  const shift = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - shift);
+  return date.toISOString().slice(0, 10);
 }
 
-function dayLabel(iso: string): string {
-  return new Date(iso).toLocaleDateString('ru-RU', { weekday: 'short', day: '2-digit', month: '2-digit' });
+function weekdayIndex(dateKey: string): number {
+  return (new Date(`${dateKey}T12:00:00Z`).getUTCDay() + 6) % 7;
+}
+
+function zonedMinutes(iso: string, timeZone: string): { dateKey: string; minutes: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(new Date(iso));
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? '00';
+  return {
+    dateKey: `${value('year')}-${value('month')}-${value('day')}`,
+    minutes: Number(value('hour')) * 60 + Number(value('minute'))
+  };
+}
+
+function minutesOf(value: string): number {
+  const [hours, minutes] = value.split(':').map(Number);
+  return (hours ?? 0) * 60 + (minutes ?? 0);
+}
+
+function hhmm(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
+}
+
+function shortDate(dateKey: string): string {
+  const [, month, day] = dateKey.split('-');
+  return `${day}.${month}`;
+}
+
+interface Positioned {
+  session: SessionItem;
+  startMin: number;
+  endMin: number;
+  lane: number;
+  lanes: number;
+}
+
+function layoutDay(items: Array<{ session: SessionItem; startMin: number; endMin: number }>): Positioned[] {
+  const sorted = [...items].sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+  const laneEnds: number[] = [];
+  const placed = sorted.map((item) => {
+    let lane = laneEnds.findIndex((end) => end <= item.startMin);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(item.endMin);
+    } else {
+      laneEnds[lane] = item.endMin;
+    }
+    return { ...item, lane, lanes: 1 };
+  });
+  const lanes = Math.max(laneEnds.length, 1);
+  return placed.map((item) => ({ ...item, lanes }));
+}
+
+function visibleRange(
+  hours: WorkingHour[],
+  sessions: SessionItem[],
+  timeZone: string
+): { startHour: number; endHour: number } {
+  const open = hours.filter((hour) => !hour.isClosed);
+  let start = open.length > 0 ? Math.min(...open.map((hour) => minutesOf(hour.opensAt))) : 9 * 60;
+  let end = open.length > 0 ? Math.max(...open.map((hour) => minutesOf(hour.closesAt))) : 22 * 60;
+  for (const session of sessions) {
+    const begin = zonedMinutes(session.startsAt, timeZone).minutes;
+    const duration = Math.round(
+      (Date.parse(session.endsAt) - Date.parse(session.startsAt)) / 60_000
+    );
+    start = Math.min(start, begin);
+    end = Math.max(end, begin + duration);
+  }
+  const startHour = Math.max(0, Math.floor(start / 60));
+  const endHour = Math.min(24, Math.max(startHour + 1, Math.ceil(end / 60)));
+  return { startHour, endHour };
 }
 
 export function ScheduleTab({ studioId, canManage }: { studioId: string; canManage: boolean }) {
-  const bounds = weekBounds();
-  const [from, setFrom] = useState(bounds.from);
-  const [to, setTo] = useState(bounds.to);
+  const [studio, setStudio] = useState<StudioView | null>(null);
+  const [weekStart, setWeekStart] = useState(() => mondayOf(studioDateKey(new Date(), 'UTC')));
   const [roomFilter, setRoomFilter] = useState('');
   const [teacherFilter, setTeacherFilter] = useState('');
   const [courseFilter, setCourseFilter] = useState('');
@@ -39,6 +132,8 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [error, setError] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [moveValue, setMoveValue] = useState('');
 
   const [courseId, setCourseId] = useState('');
   const [roomId, setRoomId] = useState('');
@@ -47,16 +142,25 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
   const [startsAt, setStartsAt] = useState('');
   const [weekdays, setWeekdays] = useState<number[]>([1]);
   const [startTime, setStartTime] = useState('18:00');
-  const [startsOn, setStartsOn] = useState(bounds.from);
-  const [until, setUntil] = useState(bounds.to);
+  const [startsOn, setStartsOn] = useState(weekStart);
+  const [until, setUntil] = useState(addDays(weekStart, 27));
+
+  const timeZone = studio?.studio.timezone ?? 'Europe/Moscow';
+  const todayKey = studioDateKey(new Date(), timeZone);
+
+  useEffect(() => {
+    setWeekStart(mondayOf(studioDateKey(new Date(), timeZone)));
+  }, [timeZone]);
 
   useEffect(() => {
     void (async () => {
-      const [roomList, courseList, teacherList] = await Promise.all([
+      const [studioView, roomList, courseList, teacherList] = await Promise.all([
+        api<StudioView>(`/studios/${studioId}`),
         api<{ items: Room[] }>(`/studios/${studioId}/rooms`),
         api<{ items: Course[] }>(`/studios/${studioId}/courses`),
         api<{ items: Teacher[] }>(`/studios/${studioId}/teachers`)
       ]);
+      setStudio(studioView);
       setRooms(roomList.items);
       setCourses(courseList.items);
       setTeachers(teacherList.items);
@@ -70,8 +174,10 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
     setTeacherId(course?.teacherMembershipId ?? '');
   }, [courseId, courses]);
 
+  const weekEnd = addDays(weekStart, 6);
+
   const loadSchedule = useCallback(async () => {
-    const params = new URLSearchParams({ from, to });
+    const params = new URLSearchParams({ from: weekStart, to: weekEnd });
     if (roomFilter) params.set('roomId', roomFilter);
     if (teacherFilter) params.set('teacherMembershipId', teacherFilter);
     if (courseFilter) params.set('courseId', courseFilter);
@@ -79,13 +185,51 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
       `/studios/${studioId}/schedule?${params.toString()}`
     );
     setSessions(data.items);
-  }, [studioId, from, to, roomFilter, teacherFilter, courseFilter]);
+  }, [studioId, weekStart, weekEnd, roomFilter, teacherFilter, courseFilter]);
 
   useEffect(() => {
     void loadSchedule().catch((cause) =>
       setError(cause instanceof Error ? cause.message : 'Не удалось загрузить расписание')
     );
   }, [loadSchedule]);
+
+  const days = useMemo(
+    () => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)),
+    [weekStart]
+  );
+
+  const range = visibleRange(studio?.workingHours ?? [], sessions, timeZone);
+  const totalMinutes = (range.endHour - range.startHour) * 60;
+  const gridHeight = totalMinutes * PX_PER_MIN;
+  const hourMarks = useMemo(() => {
+    const marks: number[] = [];
+    for (let hour = range.startHour; hour <= range.endHour; hour += 1) marks.push(hour);
+    return marks;
+  }, [range.startHour, range.endHour]);
+
+  const byDay = useMemo(() => {
+    const map = new Map<string, Positioned[]>();
+    for (const session of sessions) {
+      const start = zonedMinutes(session.startsAt, timeZone);
+      if (!days.includes(start.dateKey)) continue;
+      const duration = Math.round(
+        (Date.parse(session.endsAt) - Date.parse(session.startsAt)) / 60_000
+      );
+      const list = map.get(start.dateKey) ?? [];
+      list.push({ session, startMin: start.minutes, endMin: start.minutes + duration, lane: 0, lanes: 1 });
+      map.set(start.dateKey, list);
+    }
+    for (const [key, list] of map) map.set(key, layoutDay(list));
+    return map;
+  }, [sessions, days, timeZone]);
+
+  const selected = sessions.find((session) => session.sessionId === selectedId) ?? null;
+
+  useEffect(() => {
+    if (!selected) return;
+    const start = zonedMinutes(selected.startsAt, timeZone);
+    setMoveValue(`${start.dateKey}T${hhmm(start.minutes)}`);
+  }, [selected, timeZone]);
 
   async function createSession(event: React.FormEvent) {
     event.preventDefault();
@@ -109,12 +253,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
             courseId,
             roomId,
             ...teacherPayload,
-            series: {
-              weekdays,
-              startTime,
-              startsOn,
-              until
-            }
+            series: { weekdays, startTime, startsOn, until }
           })
         });
       }
@@ -139,9 +278,24 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
     setError('');
     try {
       await api(`/studios/${studioId}/sessions/${session.sessionId}`, { method: 'DELETE' });
+      setSelectedId(null);
       await loadSchedule();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Не удалось удалить сеанс');
+    }
+  }
+
+  async function moveSession(session: SessionItem) {
+    if (!moveValue) return;
+    setError('');
+    try {
+      await api(`/studios/${studioId}/sessions/${session.sessionId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ startsAt: new Date(moveValue).toISOString() })
+      });
+      await loadSchedule();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Не удалось перенести сеанс');
     }
   }
 
@@ -151,80 +305,91 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
     );
   }
 
-  const grouped = new Map<string, SessionItem[]>();
-  for (const session of sessions) {
-    const key = dayLabel(session.startsAt);
-    const list = grouped.get(key) ?? [];
-    list.push(session);
-    grouped.set(key, list);
+  function pickSlot(dateKey: string, minutes: number) {
+    if (!canManage) return;
+    setMode('single');
+    setStartsAt(`${dateKey}T${hhmm(minutes)}`);
+    setError('');
   }
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4">
-        <label className="text-sm">
-          <span className="block text-slate-600">С</span>
-          <input
-            type="date"
-            value={from}
-            onChange={(event) => setFrom(event.target.value)}
-            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="block text-slate-600">По</span>
-          <input
-            type="date"
-            value={to}
-            onChange={(event) => setTo(event.target.value)}
-            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="block text-slate-600">Зал</span>
-          <select
-            value={roomFilter}
-            onChange={(event) => setRoomFilter(event.target.value)}
-            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setWeekStart(addDays(weekStart, -7))}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
           >
-            <option value="">все</option>
-            {rooms.map((room) => (
-              <option key={room.id} value={room.id}>
-                {room.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm">
-          <span className="block text-slate-600">Преподаватель</span>
-          <select
-            value={teacherFilter}
-            onChange={(event) => setTeacherFilter(event.target.value)}
-            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+            ← неделя
+          </button>
+          <button
+            type="button"
+            onClick={() => setWeekStart(mondayOf(todayKey))}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
           >
-            <option value="">все</option>
-            {teachers.map((teacher) => (
-              <option key={teacher.membershipId} value={teacher.membershipId}>
-                {teacher.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm">
-          <span className="block text-slate-600">Курс</span>
-          <select
-            value={courseFilter}
-            onChange={(event) => setCourseFilter(event.target.value)}
-            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+            сегодня
+          </button>
+          <button
+            type="button"
+            onClick={() => setWeekStart(addDays(weekStart, 7))}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
           >
-            <option value="">все</option>
-            {courses.map((course) => (
-              <option key={course.id} value={course.id}>
-                {course.name}
-              </option>
-            ))}
-          </select>
-        </label>
+            неделя →
+          </button>
+          <p className="ml-2 text-sm font-medium text-slate-700">
+            {shortDate(weekStart)} — {shortDate(weekEnd)}
+          </p>
+          <span className="text-xs text-slate-400">{timeZone}</span>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-sm">
+            <span className="block text-slate-600">Зал</span>
+            <select
+              value={roomFilter}
+              onChange={(event) => setRoomFilter(event.target.value)}
+              className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+            >
+              <option value="">все</option>
+              {rooms.map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm">
+            <span className="block text-slate-600">Преподаватель</span>
+            <select
+              value={teacherFilter}
+              onChange={(event) => setTeacherFilter(event.target.value)}
+              className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+            >
+              <option value="">все</option>
+              {teachers.map((teacher) => (
+                <option key={teacher.membershipId} value={teacher.membershipId}>
+                  {teacher.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm">
+            <span className="block text-slate-600">Курс</span>
+            <select
+              value={courseFilter}
+              onChange={(event) => setCourseFilter(event.target.value)}
+              className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+            >
+              <option value="">все</option>
+              {courses.map((course) => (
+                <option key={course.id} value={course.id}>
+                  {course.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       {canManage && (
@@ -351,7 +516,8 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
           )}
 
           <p className="text-xs text-slate-500">
-            Длительность сеанса равна длительности курса и не редактируется.
+            Длительность сеанса равна длительности курса и не редактируется. Клик по пустому месту
+            в календаре подставит дату и время в «Начало».
           </p>
 
           <button
@@ -365,53 +531,191 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
 
       {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
-      <div className="space-y-4">
-        {[...grouped.entries()].map(([day, items]) => (
-          <article key={day} className="rounded-xl border border-slate-200 bg-white p-4">
-            <h3 className="text-sm font-semibold text-slate-700">{day}</h3>
-            <ul className="mt-2 divide-y divide-slate-100">
-              {items.map((session) => (
-                <li key={session.sessionId} className="flex flex-wrap items-center gap-3 py-2 text-sm">
-                  <span className="w-14 font-mono text-slate-600">{timeLabel(session.startsAt)}</span>
-                  <span className="font-medium">{session.courseName}</span>
-                  <span className="text-slate-500">{session.roomName}</span>
-                  <span className="text-slate-500">{session.teacherName}</span>
-                  {session.status === 'cancelled' && (
-                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs text-rose-700">
-                      отменён
-                    </span>
-                  )}
-                  {canManage && (
-                    <span className="ml-auto flex gap-2">
-                      {session.status === 'scheduled' && (
-                        <button
-                          type="button"
-                          onClick={() => cancelSession(session)}
-                          className="rounded px-2 py-1 text-xs text-amber-700 hover:bg-amber-50"
-                        >
-                          Отменить
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => removeSession(session)}
-                        className="rounded px-2 py-1 text-xs text-rose-600 hover:bg-rose-50"
-                      >
-                        Удалить
-                      </button>
-                    </span>
-                  )}
-                </li>
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <div className="min-w-[900px]">
+          <div className="sticky top-0 z-20 flex border-b border-slate-200 bg-white">
+            <div className="w-14 shrink-0" />
+            {days.map((day) => {
+              const isToday = day === todayKey;
+              return (
+                <div
+                  key={day}
+                  className={`flex-1 border-l border-slate-100 px-2 py-2 text-center text-xs font-medium ${
+                    isToday ? 'bg-violet-50 text-violet-700' : 'text-slate-600'
+                  }`}
+                >
+                  {DAY_LABELS[weekdayIndex(day)]} {shortDate(day)}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="relative flex">
+            <div className="relative w-14 shrink-0" style={{ height: gridHeight }}>
+              {hourMarks.map((hour) => (
+                <div
+                  key={hour}
+                  className="absolute right-2 -translate-y-1/2 font-mono text-xs text-slate-400"
+                  style={{ top: (hour - range.startHour) * 60 * PX_PER_MIN }}
+                >
+                  {hhmm(hour * 60)}
+                </div>
               ))}
-            </ul>
-          </article>
-        ))}
-        {sessions.length === 0 && (
-          <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-            В выбранном периоде сеансов нет
-          </p>
-        )}
+            </div>
+
+            {days.map((day) => {
+              const items = byDay.get(day) ?? [];
+              return (
+                <div
+                  key={day}
+                  className={`relative flex-1 border-l border-slate-100 ${
+                    day === todayKey ? 'bg-violet-50/40' : ''
+                  }`}
+                  style={{ height: gridHeight }}
+                  onClick={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const offsetY = event.clientY - rect.top;
+                    const minutes =
+                      range.startHour * 60 +
+                      Math.max(
+                        0,
+                        Math.round((offsetY / PX_PER_MIN) / MINUTE_STEP) * MINUTE_STEP
+                      );
+                    pickSlot(day, minutes);
+                  }}
+                >
+                  {hourMarks.map((hour) => (
+                    <div
+                      key={hour}
+                      className="absolute inset-x-0 border-t border-slate-100"
+                      style={{ top: (hour - range.startHour) * 60 * PX_PER_MIN }}
+                    />
+                  ))}
+
+                  {items.map((item) => {
+                    const top = (item.startMin - range.startHour * 60) * PX_PER_MIN;
+                    const height = Math.max((item.endMin - item.startMin) * PX_PER_MIN, 18);
+                    const width = 100 / item.lanes;
+                    const cancelled = item.session.status === 'cancelled';
+                    const active = item.session.sessionId === selectedId;
+                    return (
+                      <button
+                        key={item.session.sessionId}
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedId(item.session.sessionId);
+                        }}
+                        title={`${item.session.courseName} · ${item.session.roomName} · ${item.session.teacherName}`}
+                        className={`absolute overflow-hidden rounded-md border px-1.5 py-1 text-left text-xs shadow-sm ${
+                          cancelled
+                            ? 'border-dashed border-rose-300 bg-rose-50 text-rose-700'
+                            : active
+                              ? 'border-violet-500 bg-violet-100 text-violet-900'
+                              : 'border-violet-200 bg-violet-50 text-violet-900 hover:bg-violet-100'
+                        }`}
+                        style={{
+                          top,
+                          height,
+                          left: `${item.lane * width}%`,
+                          width: `calc(${width}% - 2px)`
+                        }}
+                      >
+                        <span className="block font-mono text-[11px] text-slate-500">
+                          {hhmm(item.startMin)}–{hhmm(item.endMin)}
+                        </span>
+                        <span className="block truncate font-medium">{item.session.courseName}</span>
+                        {height > 46 && (
+                          <span className="block truncate text-[11px] text-slate-500">
+                            {item.session.roomName} · {item.session.teacherName}
+                          </span>
+                        )}
+                        {cancelled && (
+                          <span className="mt-0.5 block text-[10px] font-semibold uppercase">
+                            отменён
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
+
+      {sessions.length === 0 && (
+        <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+          На этой неделе сеансов нет
+        </p>
+      )}
+
+      {selected && (
+        <article className="space-y-2 rounded-xl border border-slate-200 bg-white p-4 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-semibold">{selected.courseName}</h3>
+            <span className="text-slate-500">
+              {hhmm(zonedMinutes(selected.startsAt, timeZone).minutes)}–
+              {hhmm(
+                zonedMinutes(selected.startsAt, timeZone).minutes +
+                  Math.round((Date.parse(selected.endsAt) - Date.parse(selected.startsAt)) / 60_000)
+              )}
+            </span>
+            <span className="text-slate-500">{selected.roomName}</span>
+            <span className="text-slate-500">{selected.teacherName}</span>
+            {selected.status === 'cancelled' && (
+              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs text-rose-700">
+                отменён
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setSelectedId(null)}
+              className="ml-auto rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
+            >
+              Закрыть
+            </button>
+          </div>
+
+          {canManage && (
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="text-xs">
+                <span className="block text-slate-500">Новое начало</span>
+                <input
+                  type="datetime-local"
+                  value={moveValue}
+                  onChange={(event) => setMoveValue(event.target.value)}
+                  className="mt-1 rounded-lg border border-slate-300 px-2 py-1.5"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void moveSession(selected)}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+              >
+                Перенести
+              </button>
+              {selected.status === 'scheduled' && (
+                <button
+                  type="button"
+                  onClick={() => void cancelSession(selected)}
+                  className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs text-amber-700 hover:bg-amber-50"
+                >
+                  Отменить
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => void removeSession(selected)}
+                className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50"
+              >
+                Удалить
+              </button>
+            </div>
+          )}
+        </article>
+      )}
     </section>
   );
 }
