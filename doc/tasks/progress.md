@@ -1,11 +1,11 @@
 # План задач: модуль «ядро студии» (Фаза 1)
 
-> **Версия:** 1.6.0
+> **Версия:** 1.7.0
 > **Дата:** 2026-11-22
 > **Роль:** TechLead
-> **Входы:** `doc/requirements/studio.md` (approved, v0.7.0), `doc/architecture.md` v1.6.0, `doc/contracts.md` v1.4.0
+> **Входы:** `doc/requirements/studio.md` (approved, v0.9.0), `doc/requirements/profile.md` (approved, v0.4.0), `doc/architecture.md` v1.7.0, `doc/contracts.md` v1.5.0
 > **Ветка:** `feature/studio-phase-2` (PR #8)
-> **Статус:** M0–M13 выполнены; открытых задач нет. Осталась ручная приёмка UI по §14.5 (D7).
+> **Статус:** M0–M13 выполнены; **M14 (профиль, аватары, просмотр разделов)** — T-74…T-78 в работе по плану §4.13.
 
 ## 1. Текущее состояние
 
@@ -394,6 +394,23 @@ PATCH /members; для владельца и собственных ролей �
 
 Файлы: client/src/pages/StaffTab.tsx. 	sc client 0, eslint 0.
 
+### 4.13. M14. Профиль, аватары и просмотр разделов (v0.9.0 + profile v0.4.0) — запланировано 2026-11-22
+
+Основание: `doc/requirements/studio.md` v0.9.0, `doc/requirements/profile.md` v0.4.0 (обе approved),
+`architecture.md` v1.7.0, `contracts.md` v1.5.0, миграция 009 уже накатана (локально).
+
+| ID | Задача | Файлы | Готово, когда | Требования |
+|---|---|---|---|---|
+| **T-74** | API профиля: `GET /me` с новыми полями и `avatarUrl`; `PATCH /me` (имя, фамилия* , телефон, соцсеть, мессенджер, `about`; `email` запрещён); `POST /me/password` | `server/src/modules/auth/*`, `server/test/auth.test.ts` | `PATCH` сохраняет поля, пустые имя/фамилия → 422 `details.fields`; `email` в теле → 422; смена пароля: неверный текущий → 401, короткий → 422, вход по новому работает; в ответах нет `passwordHash` | PRF-2…PRF-9 |
+| **T-75** | Аватары: `POST /me/avatar` (multipart, jpeg/png/webp ≤ 2 МБ), `DELETE /me/avatar`, публичный `GET /avatars/{key}`; файлы на томе `uploads/avatars`, в `users.avatar_key` ключ | `server/src/modules/auth/routes.ts`, `server/src/modules/auth/avatar.ts` (новый), `server/src/app.ts`, `server/test/auth.test.ts` | png 300 КБ → 200 и `avatarUrl`; pdf/5 МБ → 422 `details.fields.avatar`; `DELETE` → 204 и `avatarUrl: null`; неизвестный key → 404; файл лежит в томе | PRF-11, Q18 |
+| **T-76** | Право `members.list` (все, кроме `student`) для `GET /members`; в ответах `avatarUrl`, `about`, `email` только при `members.write`; то же в `GET /teachers` | `server/src/modules/access/rbac.ts`, `server/src/modules/members/*`, `server/test/studios.test.ts`, `server/test/isolation.test.ts` | teacher видит список сотрудников без email; student → 403; owner видит email; аватары в ответах | ROL-13, ROL-14, PRF-13 |
+| **T-77** | UI «Профиль»: вкладка для всех; поля и аватар (превью, загрузка, удаление), «о себе», членства и роли read-only, смена пароля, выход | `client/src/pages/ProfilePage.tsx` (новый), `client/src/App.tsx`, `client/src/types.ts`, `client/src/api.ts` | профиль доступен любой роли и аккаунту без студии; обязательные имя/фамилия дают 422 при пустых; аватар загружается и виден после перезагрузки | PRF-1…PRF-13 |
+| **T-78** | Видимость разделов: «Курсы» на просмотр всем (без кнопок), «Команда» на просмотр curator/teacher/assistant (без управления), ученик без «Команды»/«Учеников»; аватары в списках | `client/src/pages/StudioPage.tsx`, `CoursesTab.tsx`, `StaffTab.tsx`, `StudentsTab.tsx` | owner/admin — полный набор; curator/teacher/assistant видят «Курсы» и «Команду» без управления; student видит только «Расписание», «Курсы», «Профиль» | ROL-12…ROL-15 |
+
+**Порядок:** T-74 → T-76; T-75 после T-74 (общий `/me`); T-77 после T-74/T-75 (нужны API);
+T-78 после T-76 (права) — можно параллельно с T-77.
+**Оценка:** 5 задач; меняется только API профиля/прав и клиент, схема уже накатана.
+
 ## 5. Граф зависимостей
 
 ```
@@ -431,6 +448,8 @@ M11: T-63 → T-64 → T-65, T-66
      T-67 (независима)
 
 M12: T-68 + T-69 → T-70 → T-71 → T-72
+
+M14: T-74 → T-76; T-75 после T-74; T-77 после T-74/T-75; T-78 после T-76
 ```
 
 ## 6. Заблокированные задачи (не ставить в работу)
@@ -466,3 +485,5 @@ M12: T-68 + T-69 → T-70 → T-71 → T-72
     ✅ выполнены 2026-11-22; миграция 008 применена на локальной и контейнерной БД.
 11. M12 — компоновка расписания и виджет студии (v0.7.0): T-68…T-72. ✅ выполнены 2026-11-22;
     приёмка UI по §14.5 и шагу 16 §12 — за пользователем.
+12. M14 — профиль, аватары и просмотр разделов (studio v0.9.0, profile v0.4.0): T-74…T-78.
+    ⏳ запланировано; миграция 009 накатана на локальную БД.
