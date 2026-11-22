@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import {
   DAY_LABELS,
+  courseColorHex,
   type Course,
   type Room,
   type SessionItem,
@@ -134,6 +135,8 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [moveValue, setMoveValue] = useState('');
+  const [narrow, setNarrow] = useState(false);
+  const [mobileDay, setMobileDay] = useState(0);
 
   const [courseId, setCourseId] = useState('');
   const [roomId, setRoomId] = useState('');
@@ -207,8 +210,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
     return marks;
   }, [range.startHour, range.endHour]);
 
-  const byDay = useMemo(() => {
-    const map = new Map<string, Positioned[]>();
+  const byDay = useMemo(() => {    const map = new Map<string, Positioned[]>();
     for (const session of sessions) {
       const start = zonedMinutes(session.startsAt, timeZone);
       if (!days.includes(start.dateKey)) continue;
@@ -224,6 +226,43 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
   }, [sessions, days, timeZone]);
 
   const selected = sessions.find((session) => session.sessionId === selectedId) ?? null;
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 767px)');
+    const apply = () => setNarrow(query.matches);
+    apply();
+    query.addEventListener('change', apply);
+    return () => query.removeEventListener('change', apply);
+  }, []);
+
+  const colorByCourse = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const course of courses) map.set(course.id, courseColorHex(course.color));
+    return map;
+  }, [courses]);
+
+  const hoursByWeekday = useMemo(() => {
+    const map = new Map<
+      number,
+      { label: string; startMin: number; endMin: number; closed: boolean }
+    >();
+    for (const hour of studio?.workingHours ?? []) {
+      map.set(
+        hour.weekday,
+        hour.isClosed
+          ? { label: 'выходной', startMin: 0, endMin: 0, closed: true }
+          : {
+              label: `${hour.opensAt}–${hour.closesAt}`,
+              startMin: minutesOf(hour.opensAt),
+              endMin: minutesOf(hour.closesAt),
+              closed: false
+            }
+      );
+    }
+    return map;
+  }, [studio?.workingHours]);
+
+  const visibleDays = narrow ? [days[mobileDay] ?? days[0]!] : days;
 
   useEffect(() => {
     if (!selected) return;
@@ -342,6 +381,32 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
           </p>
           <span className="text-xs text-slate-400">{timeZone}</span>
         </div>
+
+        <p className="text-xs text-slate-500">
+          Часы студии:{' '}
+          {DAY_LABELS.map(
+            (label, index) => `${label} ${hoursByWeekday.get(index + 1)?.label ?? '—'}`
+          ).join(' · ')}
+        </p>
+
+        {narrow && (
+          <div className="flex gap-1 overflow-x-auto">
+            {days.map((day, index) => (
+              <button
+                key={day}
+                type="button"
+                onClick={() => setMobileDay(index)}
+                className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium ${
+                  index === mobileDay
+                    ? 'bg-violet-600 text-white'
+                    : 'border border-slate-200 text-slate-600'
+                }`}
+              >
+                {DAY_LABELS[weekdayIndex(day)]} {shortDate(day)}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-sm">
@@ -532,10 +597,10 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
       {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <div className="min-w-[900px]">
+        <div className={narrow ? '' : 'min-w-[900px]'}>
           <div className="sticky top-0 z-20 flex border-b border-slate-200 bg-white">
             <div className="w-14 shrink-0" />
-            {days.map((day) => {
+            {visibleDays.map((day) => {
               const isToday = day === todayKey;
               return (
                 <div
@@ -563,8 +628,9 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
               ))}
             </div>
 
-            {days.map((day) => {
+            {visibleDays.map((day) => {
               const items = byDay.get(day) ?? [];
+              const work = hoursByWeekday.get(weekdayIndex(day) + 1);
               return (
                 <div
                   key={day}
@@ -584,6 +650,30 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                     pickSlot(day, minutes);
                   }}
                 >
+                  {work && !work.closed && (
+                    <>
+                      <div
+                        className="pointer-events-none absolute inset-x-0 bg-slate-50"
+                        style={{
+                          top: 0,
+                          height: Math.max(
+                            (work.startMin - range.startHour * 60) * PX_PER_MIN,
+                            0
+                          )
+                        }}
+                      />
+                      <div
+                        className="pointer-events-none absolute inset-x-0 bg-slate-50"
+                        style={{
+                          top: (work.endMin - range.startHour * 60) * PX_PER_MIN,
+                          bottom: 0
+                        }}
+                      />
+                    </>
+                  )}
+                  {work?.closed && (
+                    <div className="pointer-events-none absolute inset-0 bg-slate-100" />
+                  )}
                   {hourMarks.map((hour) => (
                     <div
                       key={hour}
@@ -598,27 +688,26 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                     const width = 100 / item.lanes;
                     const cancelled = item.session.status === 'cancelled';
                     const active = item.session.sessionId === selectedId;
+                    const color = colorByCourse.get(item.session.courseId) ?? '#8b5cf6';
                     return (
                       <button
                         key={item.session.sessionId}
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          setSelectedId(item.session.sessionId);
+                          setSelectedId(active ? null : item.session.sessionId);
                         }}
                         title={`${item.session.courseName} · ${item.session.roomName} · ${item.session.teacherName}`}
-                        className={`absolute overflow-hidden rounded-md border px-1.5 py-1 text-left text-xs shadow-sm ${
-                          cancelled
-                            ? 'border-dashed border-rose-300 bg-rose-50 text-rose-700'
-                            : active
-                              ? 'border-violet-500 bg-violet-100 text-violet-900'
-                              : 'border-violet-200 bg-violet-50 text-violet-900 hover:bg-violet-100'
-                        }`}
+                        className={`absolute overflow-hidden rounded-md border px-1.5 py-1 text-left text-xs text-slate-800 shadow-sm ${
+                          cancelled ? 'border-dashed' : ''
+                        } ${active ? 'ring-2 ring-slate-400' : ''}`}
                         style={{
                           top,
                           height,
                           left: `${item.lane * width}%`,
-                          width: `calc(${width}% - 2px)`
+                          width: `calc(${width}% - 2px)`,
+                          backgroundColor: `${color}24`,
+                          borderColor: color
                         }}
                       >
                         <span className="block font-mono text-[11px] text-slate-500">
@@ -638,6 +727,89 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                       </button>
                     );
                   })}
+
+                  {selected &&
+                    byDay
+                      .get(day)
+                      ?.some((item) => item.session.sessionId === selected.sessionId) && (
+                      <div
+                        className="absolute z-30 w-64 rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-xl"
+                        style={{
+                          top: Math.max(
+                            (zonedMinutes(selected.startsAt, timeZone).minutes -
+                              range.startHour * 60) *
+                              PX_PER_MIN -
+                              8,
+                            0
+                          ),
+                          left: '25%'
+                        }}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-semibold text-slate-800">
+                            {selected.courseName}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedId(null)}
+                            className="rounded px-1 text-slate-400 hover:bg-slate-100"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <p className="mt-1 text-slate-600">
+                          {hhmm(zonedMinutes(selected.startsAt, timeZone).minutes)}–
+                          {hhmm(
+                            zonedMinutes(selected.startsAt, timeZone).minutes +
+                              Math.round(
+                                (Date.parse(selected.endsAt) - Date.parse(selected.startsAt)) /
+                                  60_000
+                              )
+                          )}{' '}
+                          · {selected.roomName}
+                        </p>
+                        <p className="text-slate-600">{selected.teacherName}</p>
+                        {selected.status === 'cancelled' && (
+                          <p className="mt-1 font-semibold uppercase text-rose-600">отменён</p>
+                        )}
+                        {canManage && (
+                          <div className="mt-2 space-y-2">
+                            <input
+                              type="datetime-local"
+                              value={moveValue}
+                              onChange={(event) => setMoveValue(event.target.value)}
+                              className="w-full rounded border border-slate-300 px-2 py-1"
+                            />
+                            <div className="flex flex-wrap gap-1">
+                              <button
+                                type="button"
+                                onClick={() => void moveSession(selected)}
+                                className="rounded border border-slate-300 px-2 py-1 text-slate-700 hover:bg-slate-50"
+                              >
+                                Перенести
+                              </button>
+                              {selected.status === 'scheduled' && (
+                                <button
+                                  type="button"
+                                  onClick={() => void cancelSession(selected)}
+                                  className="rounded border border-amber-300 px-2 py-1 text-amber-700 hover:bg-amber-50"
+                                >
+                                  Отменить
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => void removeSession(selected)}
+                                className="rounded border border-rose-300 px-2 py-1 text-rose-600 hover:bg-rose-50"
+                              >
+                                Удалить
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                 </div>
               );
             })}
@@ -651,71 +823,6 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
         </p>
       )}
 
-      {selected && (
-        <article className="space-y-2 rounded-xl border border-slate-200 bg-white p-4 text-sm">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold">{selected.courseName}</h3>
-            <span className="text-slate-500">
-              {hhmm(zonedMinutes(selected.startsAt, timeZone).minutes)}–
-              {hhmm(
-                zonedMinutes(selected.startsAt, timeZone).minutes +
-                  Math.round((Date.parse(selected.endsAt) - Date.parse(selected.startsAt)) / 60_000)
-              )}
-            </span>
-            <span className="text-slate-500">{selected.roomName}</span>
-            <span className="text-slate-500">{selected.teacherName}</span>
-            {selected.status === 'cancelled' && (
-              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs text-rose-700">
-                отменён
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => setSelectedId(null)}
-              className="ml-auto rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
-            >
-              Закрыть
-            </button>
-          </div>
-
-          {canManage && (
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="text-xs">
-                <span className="block text-slate-500">Новое начало</span>
-                <input
-                  type="datetime-local"
-                  value={moveValue}
-                  onChange={(event) => setMoveValue(event.target.value)}
-                  className="mt-1 rounded-lg border border-slate-300 px-2 py-1.5"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => void moveSession(selected)}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-              >
-                Перенести
-              </button>
-              {selected.status === 'scheduled' && (
-                <button
-                  type="button"
-                  onClick={() => void cancelSession(selected)}
-                  className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs text-amber-700 hover:bg-amber-50"
-                >
-                  Отменить
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => void removeSession(selected)}
-                className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50"
-              >
-                Удалить
-              </button>
-            </div>
-          )}
-        </article>
-      )}
     </section>
   );
 }
