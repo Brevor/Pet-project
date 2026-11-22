@@ -9,6 +9,8 @@ export interface CourseRow {
   kind: string;
   defaultDurationMin: number;
   capacity: number;
+  teacherMembershipId: string | null;
+  teacherName: string | null;
   archived: boolean;
 }
 
@@ -20,10 +22,26 @@ interface CourseDbRow {
   kind: string;
   default_duration_min: number;
   capacity: number;
+  teacher_membership_id: string | null;
+  teacher_name: string | null;
   archived_at: string | null;
 }
 
-const COLUMNS = `id, name, direction, level, kind, default_duration_min, capacity, archived_at`;
+const SELECT_COURSE = `
+  SELECT c.id,
+         c.name,
+         c.direction,
+         c.level,
+         c.kind,
+         c.default_duration_min,
+         c.capacity,
+         c.teacher_membership_id,
+         coalesce(u.display_name, u.email) AS teacher_name,
+         c.archived_at
+    FROM courses c
+    LEFT JOIN memberships m ON m.id = c.teacher_membership_id
+    LEFT JOIN users u ON u.id = m.user_id
+`;
 
 function toCourse(row: CourseDbRow): CourseRow {
   return {
@@ -34,8 +52,43 @@ function toCourse(row: CourseDbRow): CourseRow {
     kind: row.kind,
     defaultDurationMin: row.default_duration_min,
     capacity: row.capacity,
+    teacherMembershipId: row.teacher_membership_id,
+    teacherName: row.teacher_name,
     archived: row.archived_at !== null
   };
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (error as { code?: string }).code === '23505';
+}
+
+function isForeignKeyViolation(error: unknown): boolean {
+  return (error as { code?: string }).code === '23503';
+}
+
+async function assertTeacher(pool: Pool, studioId: string, membershipId: string): Promise<void> {
+  const { rowCount } = await pool.query(
+    `SELECT 1
+       FROM memberships m
+       JOIN membership_roles mr ON mr.membership_id = m.id
+      WHERE m.studio_id = $1 AND m.id = $2 AND m.status = 'active' AND mr.role = 'teacher'`,
+    [studioId, membershipId]
+  );
+  if (rowCount === 0) {
+    throw new AppError(422, 'NOT_A_TEACHER', 'Участник не является преподавателем');
+  }
+}
+
+async function findCourse(pool: Pool, studioId: string, courseId: string): Promise<CourseRow> {
+  const { rows } = await pool.query<CourseDbRow>(
+    `${SELECT_COURSE} WHERE c.studio_id = $1 AND c.id = $2`,
+    [studioId, courseId]
+  );
+  const row = rows[0];
+  if (!row) {
+    throw new AppError(404, 'NOT_FOUND', 'Курс не найден');
+  }
+  return toCourse(row);
 }
 
 export async function listCourses(
@@ -44,9 +97,9 @@ export async function listCourses(
   includeArchived: boolean
 ): Promise<CourseRow[]> {
   const { rows } = await pool.query<CourseDbRow>(
-    `SELECT ${COLUMNS} FROM courses
-      WHERE studio_id = $1 AND ($2::boolean OR archived_at IS NULL)
-      ORDER BY name`,
+    `${SELECT_COURSE}
+      WHERE c.studio_id = $1 AND ($2::boolean OR c.archived_at IS NULL)
+      ORDER BY c.name`,
     [studioId, includeArchived]
   );
   return rows.map(toCourse);
@@ -59,6 +112,7 @@ export interface CourseInput {
   kind: string;
   defaultDurationMin: number;
   capacity: number;
+  teacherMembershipId?: string | null;
 }
 
 export async function createCourse(
@@ -66,11 +120,15 @@ export async function createCourse(
   studioId: string,
   input: CourseInput
 ): Promise<CourseRow> {
+  if (input.teacherMembershipId) {
+    await assertTeacher(pool, studioId, input.teacherMembershipId);
+  }
+
   try {
-    const { rows } = await pool.query<CourseDbRow>(
-      `INSERT INTO courses (studio_id, name, direction, level, kind, default_duration_min, capacity)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING ${COLUMNS}`,
+    const { rows } = await pool.query<{ id: string }>(
+      `INSERT INTO courses (studio_id, name, direction, level, kind, default_duration_min, capacity, teacher_membership_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id`,
       [
         studioId,
         input.name,
@@ -78,13 +136,17 @@ export async function createCourse(
         input.level,
         input.kind,
         input.defaultDurationMin,
-        input.capacity
+        input.capacity,
+        input.teacherMembershipId ?? null
       ]
     );
-    return toCourse(rows[0]!);
+    return await findCourse(pool, studioId, rows[0]!.id);
   } catch (error) {
-    if ((error as { code?: string }).code === '23505') {
+    if (isUniqueViolation(error)) {
       throw new AppError(409, 'COURSE_NAME_TAKEN', 'Курс с таким названием уже есть');
+    }
+    if (isForeignKeyViolation(error)) {
+      throw new AppError(422, 'NOT_A_TEACHER', 'Участник не является преподавателем');
     }
     throw error;
   }
@@ -96,8 +158,14 @@ export async function updateCourse(
   courseId: string,
   patch: Partial<CourseInput> & { archived?: boolean }
 ): Promise<CourseRow> {
+  if (patch.teacherMembershipId) {
+    await assertTeacher(pool, studioId, patch.teacherMembershipId);
+  }
+
+  const hasTeacher = Object.prototype.hasOwnProperty.call(patch, 'teacherMembershipId');
+
   try {
-    const { rows } = await pool.query<CourseDbRow>(
+    const { rows } = await pool.query<{ id: string }>(
       `UPDATE courses SET
          name = COALESCE($3, name),
          direction = COALESCE($4, direction),
@@ -109,9 +177,13 @@ export async function updateCourse(
            WHEN $9::boolean IS NULL THEN archived_at
            WHEN $9::boolean THEN COALESCE(archived_at, now())
            ELSE NULL
+         END,
+         teacher_membership_id = CASE
+           WHEN $10::boolean THEN $11::uuid
+           ELSE teacher_membership_id
          END
        WHERE studio_id = $1 AND id = $2
-       RETURNING ${COLUMNS}`,
+       RETURNING id`,
       [
         studioId,
         courseId,
@@ -121,17 +193,22 @@ export async function updateCourse(
         patch.kind ?? null,
         patch.defaultDurationMin ?? null,
         patch.capacity ?? null,
-        patch.archived ?? null
+        patch.archived ?? null,
+        hasTeacher,
+        patch.teacherMembershipId ?? null
       ]
     );
     const row = rows[0];
     if (!row) {
       throw new AppError(404, 'NOT_FOUND', 'Курс не найден');
     }
-    return toCourse(row);
+    return await findCourse(pool, studioId, row.id);
   } catch (error) {
-    if ((error as { code?: string }).code === '23505') {
+    if (isUniqueViolation(error)) {
       throw new AppError(409, 'COURSE_NAME_TAKEN', 'Курс с таким названием уже есть');
+    }
+    if (isForeignKeyViolation(error)) {
+      throw new AppError(422, 'NOT_A_TEACHER', 'Участник не является преподавателем');
     }
     throw error;
   }
