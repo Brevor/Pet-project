@@ -52,6 +52,15 @@ curl http://localhost:8080/health
 | PATCH | `/api/v1/studios/{id}/members/{membershipId}` | заменить набор ролей |
 | DELETE | `/api/v1/studios/{id}/members/{membershipId}` | исключить участника |
 | POST | `/api/v1/studios/{id}/owner-transfer` | передать владение |
+| GET/POST | `/api/v1/studios/{id}/rooms` | залы: список и создание |
+| PATCH/DELETE | `/api/v1/studios/{id}/rooms/{roomId}` | правка, архивация, удаление |
+| GET/POST | `/api/v1/studios/{id}/courses` | курсы: список и создание |
+| PATCH/DELETE | `/api/v1/studios/{id}/courses/{courseId}` | правка, архивация, удаление |
+| GET | `/api/v1/studios/{id}/schedule?from=&to=` | расписание за период |
+| POST | `/api/v1/studios/{id}/sessions` | сеанс или серия (`series` в теле) |
+| PATCH/DELETE | `/api/v1/studios/{id}/sessions/{sessionId}` | правка и удаление сеанса |
+| POST | `/api/v1/studios/{id}/sessions/{sessionId}/cancel` | отмена сеанса |
+| DELETE | `/api/v1/studios/{id}/series/{seriesId}` | удалить будущие сеансы серии |
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/register \
