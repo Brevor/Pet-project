@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import type { Member } from '../types';
+import { Avatar } from '../components/Avatar';
 
 export function StudentsTab({
   studioId,
@@ -104,8 +105,13 @@ export function StudentsTab({
           {students.map((student) => (
             <tr key={student.membershipId} className="border-t border-slate-100">
               <td className="py-2">
-                <div className="font-medium">{student.displayName ?? student.email}</div>
-                <div className="text-xs text-slate-500">{student.email}</div>
+                <div className="flex items-center gap-2">
+                  <Avatar url={student.avatarUrl} name={student.displayName ?? student.email ?? '?'} />
+                  <div>
+                    <div className="font-medium">{student.displayName ?? student.email}</div>
+                    <div className="text-xs text-slate-500">{student.email}</div>
+                  </div>
+                </div>
               </td>
               <td className="py-2 text-slate-600">{student.status}</td>
               {canExclude && (

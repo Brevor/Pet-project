@@ -22,8 +22,12 @@ export interface StudioView {
 
 export interface Member {
   membershipId: string;
-  email: string;
+  email: string | null;
   displayName: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  avatarUrl?: string | null;
+  about?: string | null;
   roles: string[];
   status: string;
 }

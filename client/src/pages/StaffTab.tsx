@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { ROLE_LABELS, type Member } from '../types';
+import { Avatar } from '../components/Avatar';
 
 interface MeResponse {
   user: { email: string };
@@ -183,9 +184,12 @@ export function StaffTab({ studioId, canManage }: { studioId: string; canManage:
                   onClick={() => pickMember(member)}
                   className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50"
                 >
-                  <span>
-                    <span className="font-medium">{member.displayName ?? member.email}</span>
-                    <span className="ml-2 text-xs text-slate-500">{member.email}</span>
+                  <span className="flex items-center gap-2">
+                    <Avatar url={member.avatarUrl} name={member.displayName ?? member.email ?? '?'} size={22} />
+                    <span>
+                      <span className="font-medium">{member.displayName ?? member.email}</span>
+                      <span className="ml-2 text-xs text-slate-500">{member.email}</span>
+                    </span>
                   </span>
                   <span className="text-xs text-slate-500">{member.roles.join(', ')}</span>
                 </button>
@@ -260,11 +264,16 @@ export function StaffTab({ studioId, canManage }: { studioId: string; canManage:
             return (
               <tr key={member.membershipId} className="border-t border-slate-100">
                 <td className="py-2">
-                  <div className="font-medium">
-                    {member.displayName ?? member.email}
-                    {isSelf && <span className="ml-2 text-xs text-slate-400">(вы)</span>}
+                  <div className="flex items-center gap-2">
+                    <Avatar url={member.avatarUrl} name={member.displayName ?? member.email ?? '?'} />
+                    <div>
+                      <div className="font-medium">
+                        {member.displayName ?? member.email}
+                        {isSelf && <span className="ml-2 text-xs text-slate-400">(вы)</span>}
+                      </div>
+                      <div className="text-xs text-slate-500">{member.email}</div>
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-500">{member.email}</div>
                 </td>
                 <td className="py-2">
                   {editingId === member.membershipId ? (
