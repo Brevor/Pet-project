@@ -1,0 +1,13 @@
+# контекст сборки не должен тянуть локальные артефакты
+.git
+node_modules
+**/node_modules
+**/dist
+.pnpm-store
+coverage
+prototype
+doc
+download_files
+.env
+.env.*
+!.env.compose.example
