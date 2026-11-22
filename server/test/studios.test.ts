@@ -272,3 +272,29 @@ test('передача владения: новый owner, прежний admin'
   assert.ok(!oldOwner.roles.includes('owner'));
   assert.ok(oldOwner.roles.includes('admin'));
 });
+
+test('ученик создаётся с временным паролем и может войти', { skip }, async () => {
+  const owner = await registerUser();
+  const studio = await createStudio(owner.token);
+  const studentEmail = `m3-${randomUUID()}@example.com`;
+  createdEmails.push(studentEmail);
+
+  const created = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studio.id}/members`,
+    headers: auth(owner.token),
+    payload: { email: studentEmail, roles: ['student'] }
+  });
+
+  assert.equal(created.statusCode, 201);
+  const body = created.json();
+  assert.equal(body.accountCreated, true);
+  assert.ok(body.temporaryPassword);
+
+  const login = await requireApp().inject({
+    method: 'POST',
+    url: '/api/v1/auth/login',
+    payload: { email: studentEmail, password: body.temporaryPassword }
+  });
+  assert.equal(login.statusCode, 200);
+});
