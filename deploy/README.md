@@ -32,6 +32,26 @@ curl http://localhost:8080/health
 
 Ожидаемо: `{"status":"ok"}` и страница «Каркас клиента готов» на `http://localhost:8080`.
 
+## API
+
+База — `/api/v1`. Авторизация: `Authorization: Bearer <token>`.
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/health` | живость сервиса, без авторизации |
+| POST | `/api/v1/auth/register` | регистрация: `email`, `password` (≥ 8), `displayName?` |
+| POST | `/api/v1/auth/login` | вход, возвращает JWT |
+| GET | `/api/v1/me` | профиль и членства с ролями |
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"owner@studio.ru","password":"secret123","displayName":"Анна"}'
+```
+
+Ошибки — единый конверт `{"error":{"code","message","details?"}}`: `422 VALIDATION`,
+`409 EMAIL_TAKEN`, `401 INVALID_CREDENTIALS`, `401 UNAUTHORIZED`.
+
 ## Что происходит при старте
 
 1. `db` — контейнер `postgres:18-alpine`, данные в volume `pgdata`.

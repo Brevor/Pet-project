@@ -35,7 +35,7 @@ test('регистрация возвращает 201, токен и польз�
 
   const response = await app.inject({
     method: 'POST',
-    url: '/auth/register',
+    url: '/api/v1/auth/register',
     payload: { email: mail, password: 'secret123', displayName: 'Анна' }
   });
 
@@ -53,10 +53,10 @@ test('повторная регистрация того же email — 409 EMAI
   const app = appWithDb();
   const mail = email();
 
-  await app.inject({ method: 'POST', url: '/auth/register', payload: { email: mail, password: 'secret123' } });
+  await app.inject({ method: 'POST', url: '/api/v1/auth/register', payload: { email: mail, password: 'secret123' } });
   const response = await app.inject({
     method: 'POST',
-    url: '/auth/register',
+    url: '/api/v1/auth/register',
     payload: { email: mail.toUpperCase(), password: 'secret123' }
   });
 
@@ -71,7 +71,7 @@ test('короткий пароль отклоняется с 422', { skip }, as
 
   const response = await app.inject({
     method: 'POST',
-    url: '/auth/register',
+    url: '/api/v1/auth/register',
     payload: { email: email(), password: 'short' }
   });
 
@@ -85,10 +85,10 @@ test('вход с верным паролем возвращает токен', 
   const app = appWithDb();
   const mail = email();
 
-  await app.inject({ method: 'POST', url: '/auth/register', payload: { email: mail, password: 'secret123' } });
+  await app.inject({ method: 'POST', url: '/api/v1/auth/register', payload: { email: mail, password: 'secret123' } });
   const response = await app.inject({
     method: 'POST',
-    url: '/auth/login',
+    url: '/api/v1/auth/login',
     payload: { email: mail, password: 'secret123' }
   });
 
@@ -102,10 +102,10 @@ test('вход с неверным паролем — 401 INVALID_CREDENTIALS', 
   const app = appWithDb();
   const mail = email();
 
-  await app.inject({ method: 'POST', url: '/auth/register', payload: { email: mail, password: 'secret123' } });
+  await app.inject({ method: 'POST', url: '/api/v1/auth/register', payload: { email: mail, password: 'secret123' } });
   const response = await app.inject({
     method: 'POST',
-    url: '/auth/login',
+    url: '/api/v1/auth/login',
     payload: { email: mail, password: 'wrong-password' }
   });
 
@@ -121,14 +121,14 @@ test('GET /me с токеном возвращает пользователя и
 
   const registered = await app.inject({
     method: 'POST',
-    url: '/auth/register',
+    url: '/api/v1/auth/register',
     payload: { email: mail, password: 'secret123' }
   });
   const { token } = registered.json();
 
   const response = await app.inject({
     method: 'GET',
-    url: '/me',
+    url: '/api/v1/me',
     headers: { authorization: `Bearer ${token}` }
   });
 
@@ -143,7 +143,7 @@ test('GET /me с токеном возвращает пользователя и
 test('GET /me без токена — 401', { skip }, async () => {
   const app = appWithDb();
 
-  const response = await app.inject({ method: 'GET', url: '/me' });
+  const response = await app.inject({ method: 'GET', url: '/api/v1/me' });
 
   assert.equal(response.statusCode, 401);
   assert.equal(response.json().error.code, 'UNAUTHORIZED');
@@ -156,7 +156,7 @@ test('GET /me с испорченным токеном — 401', { skip }, async
 
   const response = await app.inject({
     method: 'GET',
-    url: '/me',
+    url: '/api/v1/me',
     headers: { authorization: 'Bearer not-a-token' }
   });
 
@@ -164,3 +164,4 @@ test('GET /me с испорченным токеном — 401', { skip }, async
 
   await app.close();
 });
+

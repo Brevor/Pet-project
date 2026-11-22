@@ -33,6 +33,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   if (options.pool) {
     app.register(authRoutes, {
+      prefix: '/api/v1',
       pool: options.pool,
       jwtExpiresIn: options.jwtExpiresIn ?? '24h'
     });
@@ -55,3 +56,4 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   return app;
 }
+
