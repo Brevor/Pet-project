@@ -12,14 +12,16 @@ import { OnboardingPage } from './OnboardingPage';
 import { RoomsTab } from './RoomsTab';
 import { ScheduleTab } from './ScheduleTab';
 import { StaffTab } from './StaffTab';
+import { StudentsTab } from './StudentsTab';
 
-type Tab = 'schedule' | 'courses' | 'rooms' | 'staff';
+type Tab = 'schedule' | 'courses' | 'rooms' | 'staff' | 'students';
 
-const TABS: Array<{ id: Tab; label: string }> = [
+const ALL_TABS: Array<{ id: Tab; label: string }> = [
   { id: 'schedule', label: 'Расписание' },
   { id: 'courses', label: 'Курсы' },
   { id: 'rooms', label: 'Залы' },
-  { id: 'staff', label: 'Команда' }
+  { id: 'staff', label: 'Команда' },
+  { id: 'students', label: 'Ученики' }
 ];
 
 function describeHours(hours: WorkingHour[]): string {
@@ -111,7 +113,20 @@ export function StudioPage({ onLogout }: { onLogout: () => void }) {
   }
 
   const studioId = studio.studio.id;
-  const canEditLink = studio.myRoles.some((role) => role === 'owner' || role === 'admin');
+  const roles = studio.myRoles;
+  const canManageStaff = roles.some((role) => role === 'owner' || role === 'admin');
+  const canManageStudents = canManageStaff || roles.includes('curator');
+  const canManageSchedule = canManageStudents;
+  const canManageCourses = canManageStudents;
+  const canManageRooms = canManageStudents;
+  const canEditLink = canManageStaff;
+  const visibleTabs = ALL_TABS.filter((item) => {
+    if (item.id === 'staff') return canManageStaff;
+    if (item.id === 'students') return canManageStudents;
+    if (item.id === 'courses') return canManageCourses;
+    if (item.id === 'rooms') return canManageRooms;
+    return true;
+  });
   const referralUrl = `${window.location.origin}${studio.referralUrl}`;
 
   return (
@@ -183,7 +198,7 @@ export function StudioPage({ onLogout }: { onLogout: () => void }) {
       </section>
 
       <nav className="flex flex-wrap gap-2">
-        {TABS.map((item) => (
+        {visibleTabs.map((item) => (
           <button
             key={item.id}
             type="button"
@@ -200,9 +215,10 @@ export function StudioPage({ onLogout }: { onLogout: () => void }) {
       </nav>
 
       {tab === 'staff' && <StaffTab studioId={studioId} />}
+      {tab === 'students' && <StudentsTab studioId={studioId} />}
       {tab === 'rooms' && <RoomsTab studioId={studioId} />}
       {tab === 'courses' && <CoursesTab studioId={studioId} />}
-      {tab === 'schedule' && <ScheduleTab studioId={studioId} />}
+      {tab === 'schedule' && <ScheduleTab studioId={studioId} canManage={canManageSchedule} />}
     </div>
   );
 }

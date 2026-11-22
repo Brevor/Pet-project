@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
-import { DAY_LABELS, type Course, type Member, type Room, type SessionItem } from '../types';
-
-const DURATIONS = [45, 60, 75, 90, 120];
+import { DAY_LABELS, type Course, type Room, type SessionItem, type Teacher } from '../types';
 
 function isoDate(date: Date): string {
   const year = date.getFullYear();
@@ -28,7 +26,7 @@ function dayLabel(iso: string): string {
   return new Date(iso).toLocaleDateString('ru-RU', { weekday: 'short', day: '2-digit', month: '2-digit' });
 }
 
-export function ScheduleTab({ studioId }: { studioId: string }) {
+export function ScheduleTab({ studioId, canManage }: { studioId: string; canManage: boolean }) {
   const bounds = weekBounds();
   const [from, setFrom] = useState(bounds.from);
   const [to, setTo] = useState(bounds.to);
@@ -38,14 +36,13 @@ export function ScheduleTab({ studioId }: { studioId: string }) {
 
   const [rooms, setRooms] = useState<Room[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
-  const [teachers, setTeachers] = useState<Member[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [error, setError] = useState('');
 
   const [courseId, setCourseId] = useState('');
   const [roomId, setRoomId] = useState('');
   const [teacherId, setTeacherId] = useState('');
-  const [duration, setDuration] = useState(90);
   const [mode, setMode] = useState<'single' | 'series'>('series');
   const [startsAt, setStartsAt] = useState('');
   const [weekdays, setWeekdays] = useState<number[]>([1]);
@@ -58,16 +55,20 @@ export function ScheduleTab({ studioId }: { studioId: string }) {
       const [roomList, courseList, teacherList] = await Promise.all([
         api<{ items: Room[] }>(`/studios/${studioId}/rooms`),
         api<{ items: Course[] }>(`/studios/${studioId}/courses`),
-        api<{ items: Member[] }>(`/studios/${studioId}/members?role=teacher`)
+        api<{ items: Teacher[] }>(`/studios/${studioId}/teachers`)
       ]);
       setRooms(roomList.items);
       setCourses(courseList.items);
       setTeachers(teacherList.items);
       setCourseId(courseList.items[0]?.id ?? '');
       setRoomId(roomList.items[0]?.id ?? '');
-      setTeacherId(teacherList.items[0]?.membershipId ?? '');
     })().catch((cause) => setError(cause instanceof Error ? cause.message : 'Ошибка загрузки'));
   }, [studioId]);
+
+  useEffect(() => {
+    const course = courses.find((item) => item.id === courseId);
+    setTeacherId(course?.teacherMembershipId ?? '');
+  }, [courseId, courses]);
 
   const loadSchedule = useCallback(async () => {
     const params = new URLSearchParams({ from, to });
@@ -90,15 +91,15 @@ export function ScheduleTab({ studioId }: { studioId: string }) {
     event.preventDefault();
     setError('');
     try {
+      const teacherPayload = teacherId ? { teacherMembershipId: teacherId } : {};
       if (mode === 'single') {
         await api(`/studios/${studioId}/sessions`, {
           method: 'POST',
           body: JSON.stringify({
             courseId,
             roomId,
-            teacherMembershipId: teacherId,
-            startsAt: new Date(startsAt).toISOString(),
-            durationMin: duration
+            ...teacherPayload,
+            startsAt: new Date(startsAt).toISOString()
           })
         });
       } else {
@@ -107,13 +108,12 @@ export function ScheduleTab({ studioId }: { studioId: string }) {
           body: JSON.stringify({
             courseId,
             roomId,
-            teacherMembershipId: teacherId,
+            ...teacherPayload,
             series: {
               weekdays,
               startTime,
               startsOn,
-              until,
-              durationMin: duration
+              until
             }
           })
         });
@@ -205,7 +205,7 @@ export function ScheduleTab({ studioId }: { studioId: string }) {
             <option value="">все</option>
             {teachers.map((teacher) => (
               <option key={teacher.membershipId} value={teacher.membershipId}>
-                {teacher.displayName ?? teacher.email}
+                {teacher.displayName}
               </option>
             ))}
           </select>
@@ -227,148 +227,141 @@ export function ScheduleTab({ studioId }: { studioId: string }) {
         </label>
       </div>
 
-      <form
-        onSubmit={createSession}
-        className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
-      >
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="text-sm">
-            <span className="block text-slate-600">Курс</span>
-            <select
-              value={courseId}
-              onChange={(event) => setCourseId(event.target.value)}
-              className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
-              required
-            >
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            <span className="block text-slate-600">Зал</span>
-            <select
-              value={roomId}
-              onChange={(event) => setRoomId(event.target.value)}
-              className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
-              required
-            >
-              {rooms.map((room) => (
-                <option key={room.id} value={room.id}>
-                  {room.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            <span className="block text-slate-600">Преподаватель</span>
-            <select
-              value={teacherId}
-              onChange={(event) => setTeacherId(event.target.value)}
-              className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
-              required
-            >
-              {teachers.map((teacher) => (
-                <option key={teacher.membershipId} value={teacher.membershipId}>
-                  {teacher.displayName ?? teacher.email}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            <span className="block text-slate-600">Длительность</span>
-            <select
-              value={duration}
-              onChange={(event) => setDuration(Number(event.target.value))}
-              className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
-            >
-              {DURATIONS.map((item) => (
-                <option key={item} value={item}>
-                  {item} мин
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            <span className="block text-slate-600">Тип</span>
-            <select
-              value={mode}
-              onChange={(event) => setMode(event.target.value as 'single' | 'series')}
-              className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
-            >
-              <option value="series">серия</option>
-              <option value="single">разовый</option>
-            </select>
-          </label>
-        </div>
-
-        {mode === 'single' ? (
-          <label className="block text-sm">
-            <span className="text-slate-600">Начало</span>
-            <input
-              type="datetime-local"
-              value={startsAt}
-              onChange={(event) => setStartsAt(event.target.value)}
-              required
-              className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
-            />
-          </label>
-        ) : (
+      {canManage && (
+        <form
+          onSubmit={createSession}
+          className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
+        >
           <div className="flex flex-wrap items-end gap-3">
-            <div className="text-sm">
-              <span className="block text-slate-600">Дни недели</span>
-              <div className="mt-1 flex flex-wrap gap-2">
-                {DAY_LABELS.map((label, index) => (
-                  <label key={label} className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={weekdays.includes(index + 1)}
-                      onChange={() => toggleWeekday(index + 1)}
-                    />
-                    {label}
-                  </label>
+            <label className="text-sm">
+              <span className="block text-slate-600">Курс</span>
+              <select
+                value={courseId}
+                onChange={(event) => setCourseId(event.target.value)}
+                className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+                required
+              >
+                {courses.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.name}
+                  </option>
                 ))}
-              </div>
-            </div>
-            <label className="text-sm">
-              <span className="block text-slate-600">Время</span>
-              <input
-                type="time"
-                value={startTime}
-                onChange={(event) => setStartTime(event.target.value)}
-                className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
-              />
+              </select>
             </label>
             <label className="text-sm">
-              <span className="block text-slate-600">С даты</span>
-              <input
-                type="date"
-                value={startsOn}
-                onChange={(event) => setStartsOn(event.target.value)}
+              <span className="block text-slate-600">Зал</span>
+              <select
+                value={roomId}
+                onChange={(event) => setRoomId(event.target.value)}
                 className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
-              />
+                required
+              >
+                {rooms.map((room) => (
+                  <option key={room.id} value={room.id}>
+                    {room.name}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="text-sm">
-              <span className="block text-slate-600">По дату</span>
-              <input
-                type="date"
-                value={until}
-                onChange={(event) => setUntil(event.target.value)}
+              <span className="block text-slate-600">Преподаватель</span>
+              <select
+                value={teacherId}
+                onChange={(event) => setTeacherId(event.target.value)}
                 className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
-              />
+                required
+              >
+                <option value="">выберите</option>
+                {teachers.map((teacher) => (
+                  <option key={teacher.membershipId} value={teacher.membershipId}>
+                    {teacher.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="block text-slate-600">Тип</span>
+              <select
+                value={mode}
+                onChange={(event) => setMode(event.target.value as 'single' | 'series')}
+                className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+              >
+                <option value="series">серия</option>
+                <option value="single">разовый</option>
+              </select>
             </label>
           </div>
-        )}
 
-        <button
-          type="submit"
-          className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
-        >
-          Создать
-        </button>
-      </form>
+          {mode === 'single' ? (
+            <label className="block text-sm">
+              <span className="text-slate-600">Начало</span>
+              <input
+                type="datetime-local"
+                value={startsAt}
+                onChange={(event) => setStartsAt(event.target.value)}
+                required
+                className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+              />
+            </label>
+          ) : (
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="text-sm">
+                <span className="block text-slate-600">Дни недели</span>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {DAY_LABELS.map((label, index) => (
+                    <label key={label} className="flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={weekdays.includes(index + 1)}
+                        onChange={() => toggleWeekday(index + 1)}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <label className="text-sm">
+                <span className="block text-slate-600">Время</span>
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(event) => setStartTime(event.target.value)}
+                  className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="block text-slate-600">С даты</span>
+                <input
+                  type="date"
+                  value={startsOn}
+                  onChange={(event) => setStartsOn(event.target.value)}
+                  className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="block text-slate-600">По дату</span>
+                <input
+                  type="date"
+                  value={until}
+                  onChange={(event) => setUntil(event.target.value)}
+                  className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+                />
+              </label>
+            </div>
+          )}
+
+          <p className="text-xs text-slate-500">
+            Длительность сеанса равна длительности курса и не редактируется.
+          </p>
+
+          <button
+            type="submit"
+            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+          >
+            Создать
+          </button>
+        </form>
+      )}
 
       {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
@@ -388,24 +381,26 @@ export function ScheduleTab({ studioId }: { studioId: string }) {
                       отменён
                     </span>
                   )}
-                  <span className="ml-auto flex gap-2">
-                    {session.status === 'scheduled' && (
+                  {canManage && (
+                    <span className="ml-auto flex gap-2">
+                      {session.status === 'scheduled' && (
+                        <button
+                          type="button"
+                          onClick={() => cancelSession(session)}
+                          className="rounded px-2 py-1 text-xs text-amber-700 hover:bg-amber-50"
+                        >
+                          Отменить
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => cancelSession(session)}
-                        className="rounded px-2 py-1 text-xs text-amber-700 hover:bg-amber-50"
+                        onClick={() => removeSession(session)}
+                        className="rounded px-2 py-1 text-xs text-rose-600 hover:bg-rose-50"
                       >
-                        Отменить
+                        Удалить
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => removeSession(session)}
-                      className="rounded px-2 py-1 text-xs text-rose-600 hover:bg-rose-50"
-                    >
-                      Удалить
-                    </button>
-                  </span>
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
