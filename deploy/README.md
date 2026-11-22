@@ -42,6 +42,16 @@ curl http://localhost:8080/health
 | POST | `/api/v1/auth/register` | регистрация: `email`, `password` (≥ 8), `displayName?` |
 | POST | `/api/v1/auth/login` | вход, возвращает JWT |
 | GET | `/api/v1/me` | профиль и членства с ролями |
+| GET | `/api/v1/studios` | студии, где я участник |
+| POST | `/api/v1/studios` | создание студии: `name`, `timezone`, `workingHours?` |
+| GET | `/api/v1/studios/{id}` | студия, часы, мои роли |
+| PATCH | `/api/v1/studios/{id}` | название, часовой пояс, часы |
+| POST | `/api/v1/studios/{id}/archive` | архивация, только владелец |
+| GET | `/api/v1/studios/{id}/members` | участники, фильтры `role`, `q` |
+| POST | `/api/v1/studios/{id}/members` | добавить по `email` с ролями |
+| PATCH | `/api/v1/studios/{id}/members/{membershipId}` | заменить набор ролей |
+| DELETE | `/api/v1/studios/{id}/members/{membershipId}` | исключить участника |
+| POST | `/api/v1/studios/{id}/owner-transfer` | передать владение |
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/register \

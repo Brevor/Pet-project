@@ -150,18 +150,18 @@ D1 подтверждён пользователем, D6 закрыт: PostgreSQ
 |---|---|---|---|---|
 | T-10 | `POST /auth/register`, `POST /auth/login`, JWT, argon2 | `server/src/modules/auth/*` | 201/200, `409 EMAIL_TAKEN`, `401 INVALID_CREDENTIALS` | ✅ 8 тестов на реальной БД |
 | T-11 | `GET /me` с членствами и ролями | `server/src/modules/auth/routes.ts`, `server/src/modules/access/repository.ts` | пустой `memberships` у нового аккаунта | ✅ тест ACC-4 |
-| T-12 | `tenant-guard` + `rbac` (карта прав из `architecture.md` §8) | `server/src/modules/access/*` | 403 `NOT_A_MEMBER`, 403 `FORBIDDEN`, объединение ролей | ⏳ следующая задача |
+| T-12 | `tenant-guard` + `rbac` (карта прав из `architecture.md` §8) | `server/src/modules/access/*` | 403 `NOT_A_MEMBER`, 403 `FORBIDDEN`, объединение ролей | ✅ `getMembership`, `requireAccess`, `can()`; покрыто тестами M3 |
 
-### M3. Студия и персонал
+### M3. Студия и персонал — T-13…T-16 выполнены 2026-11-22
 
-| ID | Задача | Файлы | Готово, когда | Зависит от |
+| ID | Задача | Файлы | Готово, когда | Статус |
 |---|---|---|---|---|
-| T-13 | `POST /studios`: транзакция «студия + 7 строк часов + membership + owner» | `server/src/modules/studios/create.ts` | после создания ровно один owner; часы сохранены | T-12 |
-| T-14 | `GET /studios/{id}`, `PATCH`, `POST /archive` | `server/src/modules/studios/*` | `403` для не-owner при архивации; `PATCH` меняет часы | T-13 |
-| T-15 | Участники: список с фильтром, добавление по email, смена ролей, исключение | `server/src/modules/members/*` | `404 USER_NOT_FOUND`, `409 ALREADY_MEMBER`, `409 LAST_OWNER`, роли объединяются | T-13 |
-| T-16 | `POST /studios/{id}/owner-transfer` | `server/src/modules/members/transfer.ts` | после передачи один owner, старый — admin | T-15 |
-| T-17 | Путь ученика: добавление с созданием аккаунта (STF-9) | `server/src/modules/members/students.ts` | новый email → аккаунт + членство с ролью `student`; письмо-заглушка не падает без SMTP | T-15 |
-| T-18 | UI: регистрация/вход, создание студии, экран персонала с ролями | `client/src/pages/auth/*`, `client/src/pages/studio/*`, `client/src/pages/members/*` | сценарий: владелец создаёт студию и добавляет преподавателя | T-03, T-15 |
+| T-13 | `POST /studios`: транзакция «студия + 7 строк часов + membership + owner» | `server/src/modules/studios/*` | ровно один owner; часы сохранены | ✅ тест: 201, 7 часов, `myRoles:['owner']` |
+| T-14 | `GET /studios/:id`, `PATCH`, `POST /archive` | `server/src/modules/studios/routes.ts` | 403 для не-owner при архивации | ✅ тесты |
+| T-15 | Участники: список с фильтром, добавление по email, смена ролей, исключение | `server/src/modules/members/*` | 404/409/`LAST_OWNER`, несколько ролей | ✅ тесты |
+| T-16 | `POST /studios/:id/owner-transfer` | `server/src/modules/members/repository.ts` | новый owner, прежний admin | ✅ тест |
+| T-17 | Путь ученика: добавление с созданием аккаунта (STF-9) | `server/src/modules/members/students.ts` | аккаунт + роль `student`, письмо | ⛔ нужен SMTP/письма — отложено |
+| T-18 | UI: регистрация/вход, создание студии, персонал | `client/src/pages/*` | сквозной сценарий в браузере | ⏳ следующая задача |
 
 ### M4. Залы и курсы
 
