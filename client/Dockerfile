@@ -3,7 +3,7 @@ FROM node:24-alpine AS build
 WORKDIR /repo
 RUN npm install -g pnpm@11.28.5
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY server/package.json ./server/package.json
 COPY client/package.json ./client/package.json
 
