@@ -1,9 +1,9 @@
 # Контракты API: ядро студии
 
-> **Версия:** 1.5.0
+> **Версия:** 1.5.1
 > **Дата:** 2026-11-22
 > **Роль:** Architect
-> **Основание:** `doc/architecture.md` (v1.7.0), `doc/requirements/studio.md` (approved, v0.9.0), `doc/requirements/profile.md` (approved, v0.4.0)
+> **Основание:** `doc/architecture.md` (v1.7.1), `doc/requirements/studio.md` (approved, v0.9.0), `doc/requirements/profile.md` (approved, v0.4.0)
 > **Статус:** действует; соответствует реализации M0–M9. Изменения 1.1.0 (§0) реализованы в M8.
 > Изменения 1.3.1 — уточнение семантики полей, которые уже есть в коде (`weeklyLoadHours`, `q`,
 > границы периода расписания). Изменения 1.3.2 — требования v0.5.0 (недельный календарь,
@@ -117,11 +117,12 @@
 
 ### POST /me/avatar
 
-`multipart/form-data`, поле `file`. Допустимы `image/jpeg`, `image/png`, `image/webp`, до 2 МБ.
-Файл сохраняется в хранилище (том), в `users.avatar_key` — ключ (Q18).
+Тело — **сырые байты изображения**, `Content-Type: image/jpeg | image/png | image/webp`, до 2 МБ
+(multipart не используется: сервер принимает body как `Buffer`). Файл сохраняется в хранилище
+(том), в `users.avatar_key` — ключ (Q18).
 
 `200` → `{ "user": { … } }` с новым `avatarUrl`. Ошибки: `422 VALIDATION`
-(`details.fields.avatar`) — тип, размер или пустой файл; `401 UNAUTHORIZED`.
+(`details.fields.avatar`) — неверный тип, размер больше 2 МБ или пустое тело; `401 UNAUTHORIZED`.
 
 ### DELETE /me/avatar
 
@@ -532,7 +533,10 @@ owner: остальные роли получают `403 NOT_A_MEMBER` на вс
 
 | Эндпоинт | Право |
 |---|---|
-| `GET /studios/{id}`, `/me` | `studio.read` |
+| `GET /studios/{id}` | `studio.read` |
+| `GET /me` | JWT, любая роль; студийный контекст не нужен (PRF-1) |
+| `PATCH /me`, `POST /me/password`, `POST/DELETE /me/avatar` | JWT, только свой аккаунт (PRF-1…PRF-12) |
+| `GET /avatars/{key}` | публично, без JWT (Q17) |
 | `PATCH /studios/{id}` | `studio.write` |
 | `POST /studios/{id}/archive` | `studio.archive` |
 | `GET /studios/{id}/members` | `members.list` (все, кроме `student`); `?role=student` — `students.write`; `PATCH/DELETE` — `members.write` |

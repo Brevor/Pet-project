@@ -1,10 +1,10 @@
 # Архитектура: модуль «ядро студии»
 
-> **Версия:** 1.7.0
+> **Версия:** 1.7.1
 > **Дата:** 2026-11-22
 > **Роль:** Architect
 > **Основание:** `doc/requirements/studio.md` (approved v0.9.0), `doc/requirements/profile.md` (approved v0.4.0), `doc/proposal.md`
-> **Связанные:** `doc/contracts.md` (v1.5.0)
+> **Связанные:** `doc/contracts.md` (v1.5.1)
 
 > **Индекс разделов:**
 > - §1 Вердикт анализа
@@ -342,7 +342,7 @@ JWT: `sub` (user id), `iat`, `exp` (24 ч). Студия в токен не за
 | `members.list` (просмотр списка сотрудников) | все, кроме `student` (v0.9.0, ROL-14) |
 | `members.write` (сотрудники) | owner, admin |
 | `students.write` | owner, admin, curator |
-| `courses.read` (просмотр каталога и карточки) | любая роль (ROL-13) |
+| `schedule.read` (просмотр расписания, курсов и залов) | любая роль (ROL-13) |
 | `rooms.write` | owner, admin, curator |
 | `courses.write` | owner, admin, curator |
 | `schedule.read` | любая роль |
@@ -354,9 +354,10 @@ JWT: `sub` (user id), `iat`, `exp` (24 ч). Студия в токен не за
 
 **Уточнение v0.9.0.** `members.read` заменён на `members.list`: «Команда» открывается на просмотр
 всем, кроме ученика (ROL-14), а управление ролями остаётся за `members.write` (owner, admin).
-`courses.read` вынесен отдельно, чтобы «Курсы» были доступны на просмотр всем (ROL-13), а
-изменение каталога по-прежнему требовало `courses.write`. Профиль — не студийное право:
-доступен любому авторизованному аккаунту (PRF-1), студийный контекст не нужен.
+Просмотр курсов и залов отдельного действия не получил: он покрывается существующим
+`schedule.read` («просмотр справочников студии»), поэтому ROL-13 реализуется без изменения набора
+прав. Профиль — не студийное право: доступен любому авторизованному аккаунту (PRF-1), студийный
+контекст не нужен.
 
 - `GET /studios/{id}/teachers` — справочник преподавателей (`membershipId`, `displayName`),
   право `schedule.read`: нужен фильтру расписания и форме сеанса всем ролям; email не отдаётся;
@@ -400,8 +401,8 @@ JWT: `sub` (user id), `iat`, `exp` (24 ч). Студия в токен не за
 | Требования | Таблицы | Эндпоинты | Компонент |
 |---|---|---|---|
 | STU-1…STU-6 | `studios`, `studio_working_hours`, `memberships`, `membership_roles` | `/auth/register`, `/studios` | `studios` |
-| ACC-1…ACC-9, STF-1…STF-12 | `users`, `memberships`, `membership_roles` | `/auth/*`, `/me`, `/studios/{id}/members` | `auth`, `members` |
-| REF-1…REF-8 | `studios.referral_code`, `memberships` | `/join/{code}`, `/studios/{id}/referral` | `studios`, `members` |
+| ACC-1…ACC-9, STF-1…STF-15, ROL-1…ROL-15 | `users`, `memberships`, `membership_roles` | `/auth/*`, `/me`, `/studios/{id}/members`, `/studios/{id}/teachers` | `auth`, `members` |
+| PRF-1…PRF-13 | `users` (profile-поля, `avatar_key`), файлы аватаров на томе | `/me`, `/me/password`, `/me/avatar`, `/avatars/{key}` | `auth` |
 | ROL-1…ROL-10 | `membership_roles` | все | `rbac` |
 | ROL-11, ROL-12 | — (клиент) | — | клиент, спецификация §14 |
 | ROM-1…ROM-7 | `rooms`, `class_sessions` | `/studios/{id}/rooms` | `rooms` |
@@ -450,7 +451,7 @@ JWT: `sub` (user id), `iat`, `exp` (24 ч). Студия в токен не за
 | Вкладка | Право | owner | admin | curator | teacher | assistant | student |
 |---|---|---|---|---|---|---|---|
 | Расписание | `schedule.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Курсы | `courses.read` (просмотр) / `courses.write` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Курсы | `schedule.read` (просмотр) / `courses.write` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Залы | `rooms.write` | ✓ | ✓ | ✓ | — | — | — |
 | Команда | `members.list` (просмотр) | ✓ | ✓ | ✓ | ✓ | ✓ | — |
 | Ученики | `students.write` | ✓ | ✓ | ✓ | — | — | — |
@@ -529,27 +530,28 @@ JWT: `sub` (user id), `iat`, `exp` (24 ч). Студия в токен не за
 
 ### 14.3. Источники данных для экранов
 
-- `ScheduleTab` загружает преподавателей из `GET /studios/{id}/teachers`, а не из
-  `GET /members?role=teacher`: у куратора больше нет `members.read`, но форма сеанса и фильтр
-  должны работать.
-- `StaffTab` использует `GET /members` (`members.read`), `StudentsTab` — `GET /members?role=student`
-  (`students.write`).
+- `ScheduleTab` загружает преподавателей из `GET /studios/{id}/teachers` — отдельный справочник
+  без email, нужный фильтру расписания и форме сеанса всем ролям.
+- `StaffTab` использует `GET /members` (`members.list` — все, кроме ученика; email виден только
+  при `members.write`), `StudentsTab` — `GET /members?role=student` (`students.write`).
+- `ProfilePage` использует только `GET /me`, `PATCH /me`, `POST /me/password` и `/me/avatar` —
+  студийный контекст не нужен.
 - Недоступный экран не должен выполнять запросы своих данных: иначе 403 в консоли и утечка
   структуры API.
 
-### 14.4. Решение по разделу «Команда» и ученикам
+### 14.4. Раздел «Команда» и ученики (уточнено v0.9.0)
 
-Матрица 4.1 разделяет «Персонал и роли» (owner, admin) и «Ученики студии» (owner, admin, curator),
-ROL-7 прямо запрещает куратору доступ к персоналу. Поэтому:
+Матрица 4.1 разделяет «Персонал и роли» и «Ученики студии», но просмотр и управление разведены:
 
-- «Команда» — только owner/admin;
-- «Ученики» — отдельная вкладка для owner/admin/curator.
+- «Команда» — **просмотр** всем ролям, кроме ученика (`members.list`: owner, admin, curator,
+  teacher, assistant); управление ролями — `members.write` (owner, admin). До v0.9.0 куратор
+  персонал не видел; теперь видит, но без действий (ROL-7, ROL-14).
+- «Ученики» — отдельная вкладка для owner/admin/curator (`students.write`), список только из
+  участников без ролей сотрудника (STF-14, Q11).
 
-Альтернатива «одна вкладка с фильтром по ученикам для куратора» отклонена: она либо показывает
-куратору персонал, либо требует скрывать внутри одной вкладки разные списки, что противоречит
-ROL-12 («раздел без доступных действий не отображается»). Решение подлежит подтверждению
-пользователем при приёмке UI: если куратору нужен доступ к списку персонала, это меняет
-`members.read` обратно и отменяет вкладку «Ученики».
+Ранее отклонённая альтернатива «одна вкладка с фильтром» остаётся отклонённой: она смешивает
+списки и противоречит ROL-12. Решение о просмотре «Команды» без управления принято пользователем
+2026-11-22 (v0.9.0) и подтверждения при приёмке UI больше не требует.
 
 ### 14.5. Критерий приёмки (для E2E)
 
