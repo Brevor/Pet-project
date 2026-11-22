@@ -196,3 +196,55 @@ test('отменённый сеанс не блокирует слот', { skip 
     await insertSession(client, seed, seed.roomId, seed.teacherId, '2026-12-03T10:00:00Z', '2026-12-03T11:00:00Z');
   });
 });
+
+test('преподаватель курса обнуляется при удалении членства', { skip }, async () => {
+  await withTransaction(async (client) => {
+    const seed = await seedStudio(client);
+
+    await client.query('UPDATE courses SET teacher_membership_id = $1 WHERE id = $2', [
+      seed.teacherId,
+      seed.courseId
+    ]);
+    const assigned = await client.query<{ teacher_membership_id: string | null }>(
+      'SELECT teacher_membership_id FROM courses WHERE id = $1',
+      [seed.courseId]
+    );
+    assert.equal(assigned.rows[0]!.teacher_membership_id, seed.teacherId);
+
+    await client.query('DELETE FROM memberships WHERE id = $1', [seed.teacherId]);
+
+    const cleared = await client.query<{ teacher_membership_id: string | null }>(
+      'SELECT teacher_membership_id FROM courses WHERE id = $1',
+      [seed.courseId]
+    );
+    assert.equal(cleared.rows[0]!.teacher_membership_id, null);
+  });
+});
+
+test('курс не может ссылаться на преподавателя другой студии', { skip }, async () => {
+  await withTransaction(async (client) => {
+    const seed = await seedStudio(client);
+
+    const otherUser = await client.query<{ id: string }>(
+      "INSERT INTO users (email, password_hash) VALUES ($1, 'x') RETURNING id",
+      [`o${Math.random().toString(36).slice(2)}@test.ru`]
+    );
+    const otherStudio = await client.query<{ id: string }>(
+      'INSERT INTO studios (name, referral_code) VALUES ($1, $2) RETURNING id',
+      ['Другая студия', `t${Math.random().toString(36).slice(2, 10)}`]
+    );
+    const otherMembership = await client.query<{ id: string }>(
+      'INSERT INTO memberships (studio_id, user_id) VALUES ($1, $2) RETURNING id',
+      [otherStudio.rows[0]!.id, otherUser.rows[0]!.id]
+    );
+
+    await assert.rejects(
+      () =>
+        client.query('UPDATE courses SET teacher_membership_id = $1 WHERE id = $2', [
+          otherMembership.rows[0]!.id,
+          seed.courseId
+        ]),
+      (error: { code?: string }) => error.code === '23503'
+    );
+  });
+});
