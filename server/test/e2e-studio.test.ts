@@ -59,6 +59,46 @@ test('сквозной сценарий §12: студия, персонал, з
   const studioId = studio.json().studio.id as string;
   createdStudios.push(studioId);
 
+  // Шаг 3: смена кода ссылки — старый адрес перестаёт работать
+  const oldCode = studio.json().referralCode as string;
+  const changedLink = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${studioId}/referral`,
+    headers: auth(owner.token),
+    payload: { code: `dance-${randomUUID().slice(0, 8)}` }
+  });
+  assert.equal(changedLink.statusCode, 200);
+  const newCode = changedLink.json().referralCode as string;
+
+  const oldLookup = await requireApp().inject({ method: 'GET', url: `/api/v1/join/${oldCode}` });
+  assert.equal(oldLookup.statusCode, 404);
+  assert.equal(oldLookup.json().error.code, 'REFERRAL_NOT_FOUND');
+
+  const newLookup = await requireApp().inject({ method: 'GET', url: `/api/v1/join/${newCode}` });
+  assert.equal(newLookup.statusCode, 200);
+
+  // Шаг 2: регистрация ученика по ссылке — роль student и рабочий JWT
+  const newcomerEmail = `join-${randomUUID()}@example.com`;
+  createdEmails.push(newcomerEmail);
+  const registered = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/join/${newCode}/register`,
+    payload: { email: newcomerEmail, password: 'secret123', displayName: 'Алиса' }
+  });
+  assert.equal(registered.statusCode, 201);
+  assert.deepEqual(registered.json().membership.roles, ['student']);
+  assert.ok(registered.json().token);
+
+  // Шаг 5: авторизованный пользователь вступает по ссылке
+  const joiner = await registerUser('joiner');
+  const joined = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/join/${newCode}/join`,
+    headers: auth(joiner.token)
+  });
+  assert.equal(joined.statusCode, 201);
+  assert.deepEqual(joined.json().membership.roles, ['student']);
+
   const teacher = await registerUser('teacher');
   const assistant = await registerUser('assistant');
   for (const [person, roles] of [
@@ -245,4 +285,31 @@ test('сквозной сценарий §12: студия, персонал, з
   });
   assert.equal(durationPatch.statusCode, 422);
   assert.ok(durationPatch.json().error.details.fields.durationMin);
+
+  // Шаг 12: данные чужой студии недоступны
+  const outsider = await registerUser('outsider');
+  const outsiderStudio = await requireApp().inject({
+    method: 'POST',
+    url: '/api/v1/studios',
+    headers: auth(outsider.token),
+    payload: { name: 'Other Lab', timezone: 'Europe/Moscow' }
+  });
+  assert.equal(outsiderStudio.statusCode, 201);
+  createdStudios.push(outsiderStudio.json().studio.id as string);
+
+  const foreignSchedule = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/schedule?from=2027-02-01&to=2027-02-14`,
+    headers: auth(outsider.token)
+  });
+  assert.equal(foreignSchedule.statusCode, 403);
+  assert.equal(foreignSchedule.json().error.code, 'NOT_A_MEMBER');
+
+  const ownSchedule = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${outsiderStudio.json().studio.id}/schedule?from=2027-02-01&to=2027-02-14`,
+    headers: auth(outsider.token)
+  });
+  assert.equal(ownSchedule.statusCode, 200);
+  assert.equal(ownSchedule.json().items.length, 0);
 });
