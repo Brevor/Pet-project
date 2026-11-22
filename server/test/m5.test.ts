@@ -112,6 +112,25 @@ async function setup(): Promise<{ fixture: Fixture; token: string }> {
   };
 }
 
+async function addMember(
+  token: string,
+  studioId: string,
+  email: string,
+  roles: string[]
+): Promise<string> {
+  const response = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studioId}/members`,
+    headers: auth(token),
+    payload: { email, roles }
+  });
+  assert.equal(response.statusCode, 201, JSON.stringify(response.json()));
+  return response.json().membership.membershipId as string;
+}
+
+const sessionDuration = (item: { startsAt: string; endsAt: string }): number =>
+  (Date.parse(item.endsAt) - Date.parse(item.startsAt)) / 60_000;
+
 test('сеанс создаётся в рабочие часы', { skip }, async () => {
   const { fixture, token } = await setup();
 
@@ -123,8 +142,7 @@ test('сеанс создаётся в рабочие часы', { skip }, async
       courseId: fixture.courseId,
       roomId: fixture.roomId,
       teacherMembershipId: fixture.teacherId,
-      startsAt: '2026-12-01T10:00:00+03:00',
-      durationMin: 60
+      startsAt: '2026-12-01T10:00:00+03:00'
     }
   });
 
@@ -143,8 +161,7 @@ test('сеанс вне рабочих часов отклоняется', { ski
       courseId: fixture.courseId,
       roomId: fixture.roomId,
       teacherMembershipId: fixture.teacherId,
-      startsAt: '2026-12-01T23:00:00+03:00',
-      durationMin: 60
+      startsAt: '2026-12-01T23:00:00+03:00'
     }
   });
 
@@ -158,8 +175,7 @@ test('конфликт по залу и по преподавателю', { skip
     courseId: fixture.courseId,
     roomId: fixture.roomId,
     teacherMembershipId: fixture.teacherId,
-    startsAt: '2026-12-02T10:00:00+03:00',
-    durationMin: 90
+    startsAt: '2026-12-02T10:00:00+03:00'
   };
 
   const first = await requireApp().inject({
@@ -204,8 +220,7 @@ test('серия создаёт сеансы и отдаётся в распис
         weekdays: [1, 3],
         startTime: '18:00',
         startsOn: '2027-01-04',
-        until: '2027-01-17',
-        durationMin: 90
+        until: '2027-01-17'
       }
     }
   });
@@ -237,8 +252,7 @@ test('отменённый сеанс освобождает слот', { skip }
     courseId: fixture.courseId,
     roomId: fixture.roomId,
     teacherMembershipId: fixture.teacherId,
-    startsAt: '2026-12-03T12:00:00+03:00',
-    durationMin: 60
+    startsAt: '2026-12-03T12:00:00+03:00'
   };
 
   const created = await requireApp().inject({
@@ -275,8 +289,7 @@ test('зал с занятиями удалить нельзя', { skip }, async
       courseId: fixture.courseId,
       roomId: fixture.roomId,
       teacherMembershipId: fixture.teacherId,
-      startsAt: '2026-12-04T10:00:00+03:00',
-      durationMin: 60
+      startsAt: '2026-12-04T10:00:00+03:00'
     }
   });
 
@@ -288,4 +301,237 @@ test('зал с занятиями удалить нельзя', { skip }, async
 
   assert.equal(response.statusCode, 409);
   assert.equal(response.json().error.code, 'ROOM_IN_USE');
+});
+
+test('длительность берётся из курса, durationMin запрещён', { skip }, async () => {
+  const { fixture, token } = await setup();
+
+  const withDuration = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${fixture.studioId}/sessions`,
+    headers: auth(token),
+    payload: {
+      courseId: fixture.courseId,
+      roomId: fixture.roomId,
+      teacherMembershipId: fixture.teacherId,
+      startsAt: '2026-12-07T10:00:00+03:00',
+      durationMin: 60
+    }
+  });
+  assert.equal(withDuration.statusCode, 422);
+  assert.equal(withDuration.json().error.code, 'VALIDATION');
+  assert.ok(withDuration.json().error.details.fields.durationMin);
+
+  const withSeriesDuration = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${fixture.studioId}/sessions`,
+    headers: auth(token),
+    payload: {
+      courseId: fixture.courseId,
+      roomId: fixture.roomId,
+      teacherMembershipId: fixture.teacherId,
+      series: {
+        weekdays: [1],
+        startTime: '18:00',
+        startsOn: '2026-12-07',
+        until: '2026-12-13',
+        durationMin: 90
+      }
+    }
+  });
+  assert.equal(withSeriesDuration.statusCode, 422);
+  assert.ok(withSeriesDuration.json().error.details.fields['series.durationMin']);
+
+  const created = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${fixture.studioId}/sessions`,
+    headers: auth(token),
+    payload: {
+      courseId: fixture.courseId,
+      roomId: fixture.roomId,
+      teacherMembershipId: fixture.teacherId,
+      startsAt: '2026-12-07T10:00:00+03:00'
+    }
+  });
+  assert.equal(created.statusCode, 201, JSON.stringify(created.json()));
+
+  const schedule = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${fixture.studioId}/schedule?from=2026-12-07&to=2026-12-13`,
+    headers: auth(token)
+  });
+  const item = schedule.json().items[0];
+  assert.ok(item.sessionId);
+  assert.equal(item.id, undefined);
+  assert.equal(sessionDuration(item), 90);
+});
+
+test('преподаватель берётся из курса и переопределяется', { skip }, async () => {
+  const { fixture, token } = await setup();
+
+  const coursePatch = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${fixture.studioId}/courses/${fixture.courseId}`,
+    headers: auth(token),
+    payload: { teacherMembershipId: fixture.teacherId }
+  });
+  assert.equal(coursePatch.statusCode, 200);
+
+  const byDefault = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${fixture.studioId}/sessions`,
+    headers: auth(token),
+    payload: {
+      courseId: fixture.courseId,
+      roomId: fixture.roomId,
+      startsAt: '2026-12-09T10:00:00+03:00'
+    }
+  });
+  assert.equal(byDefault.statusCode, 201, JSON.stringify(byDefault.json()));
+
+  const schedule = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${fixture.studioId}/schedule?from=2026-12-09&to=2026-12-09`,
+    headers: auth(token)
+  });
+  assert.equal(schedule.json().items[0].teacherMembershipId, fixture.teacherId);
+  assert.equal(schedule.json().items[0].teacherName, 'Тест');
+
+  const second = await registerUser();
+  const secondTeacherId = await addMember(token, fixture.studioId, second.email, ['teacher']);
+  const overridden = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${fixture.studioId}/sessions`,
+    headers: auth(token),
+    payload: {
+      courseId: fixture.courseId,
+      roomId: fixture.roomId,
+      teacherMembershipId: secondTeacherId,
+      startsAt: '2026-12-09T12:00:00+03:00'
+    }
+  });
+  assert.equal(overridden.statusCode, 201);
+
+  const afterOverride = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${fixture.studioId}/schedule?from=2026-12-09&to=2026-12-09`,
+    headers: auth(token)
+  });
+  const overriddenItem = afterOverride
+    .json()
+    .items.find((row: { teacherMembershipId: string }) => row.teacherMembershipId === secondTeacherId);
+  assert.ok(overriddenItem);
+
+  const courseWithoutTeacher = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${fixture.studioId}/courses`,
+    headers: auth(token),
+    payload: {
+      name: 'Без преподавателя',
+      level: 'none',
+      kind: 'group',
+      defaultDurationMin: 60,
+      capacity: 10
+    }
+  });
+  const missing = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${fixture.studioId}/sessions`,
+    headers: auth(token),
+    payload: {
+      courseId: courseWithoutTeacher.json().course.id,
+      roomId: fixture.roomId,
+      startsAt: '2026-12-09T15:00:00+03:00'
+    }
+  });
+  assert.equal(missing.statusCode, 422);
+  assert.equal(missing.json().error.code, 'VALIDATION');
+  assert.ok(missing.json().error.details.fields.teacherMembershipId);
+
+  const assistant = await registerUser();
+  const assistantId = await addMember(token, fixture.studioId, assistant.email, ['assistant']);
+  const notTeacher = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${fixture.studioId}/sessions`,
+    headers: auth(token),
+    payload: {
+      courseId: fixture.courseId,
+      roomId: fixture.roomId,
+      teacherMembershipId: assistantId,
+      startsAt: '2026-12-09T17:00:00+03:00'
+    }
+  });
+  assert.equal(notTeacher.statusCode, 422);
+  assert.equal(notTeacher.json().error.code, 'NOT_A_TEACHER');
+});
+
+test('перенос сохраняет длительность, смена курса не переписывает сеансы', { skip }, async () => {
+  const { fixture, token } = await setup();
+
+  const created = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${fixture.studioId}/sessions`,
+    headers: auth(token),
+    payload: {
+      courseId: fixture.courseId,
+      roomId: fixture.roomId,
+      teacherMembershipId: fixture.teacherId,
+      startsAt: '2026-12-14T10:00:00+03:00'
+    }
+  });
+  assert.equal(created.statusCode, 201);
+  const sessionId = created.json().items[0].sessionId as string;
+
+  const forbiddenPatch = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${fixture.studioId}/sessions/${sessionId}`,
+    headers: auth(token),
+    payload: { durationMin: 120 }
+  });
+  assert.equal(forbiddenPatch.statusCode, 422);
+  assert.ok(forbiddenPatch.json().error.details.fields.durationMin);
+
+  const moved = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${fixture.studioId}/sessions/${sessionId}`,
+    headers: auth(token),
+    payload: { startsAt: '2026-12-14T12:00:00+03:00' }
+  });
+  assert.equal(moved.statusCode, 200, JSON.stringify(moved.json()));
+  assert.equal(sessionDuration(moved.json().session), 90);
+
+  const courseUpdate = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${fixture.studioId}/courses/${fixture.courseId}`,
+    headers: auth(token),
+    payload: { defaultDurationMin: 120 }
+  });
+  assert.equal(courseUpdate.statusCode, 200);
+
+  const afterCourseChange = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${fixture.studioId}/sessions`,
+    headers: auth(token),
+    payload: {
+      courseId: fixture.courseId,
+      roomId: fixture.roomId,
+      teacherMembershipId: fixture.teacherId,
+      startsAt: '2026-12-14T15:00:00+03:00'
+    }
+  });
+  assert.equal(afterCourseChange.statusCode, 201);
+  const newSessionId = afterCourseChange.json().items[0].sessionId as string;
+
+  const schedule = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${fixture.studioId}/schedule?from=2026-12-14&to=2026-12-14`,
+    headers: auth(token)
+  });
+  const items = schedule.json().items as Array<{ sessionId: string; startsAt: string; endsAt: string }>;
+  const oldSession = items.find((item) => item.sessionId === sessionId);
+  const newSession = items.find((item) => item.sessionId === newSessionId);
+  assert.ok(oldSession);
+  assert.ok(newSession);
+  assert.equal(sessionDuration(oldSession), 90);
+  assert.equal(sessionDuration(newSession), 120);
 });

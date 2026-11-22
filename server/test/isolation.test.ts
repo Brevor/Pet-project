@@ -184,3 +184,57 @@ test('запрос без токена — 401', { skip }, async () => {
   });
   assert.equal(response.statusCode, 401);
 });
+
+test('куратор видит учеников, но не персонал; преподаватели доступны всем', { skip }, async () => {
+  const owner = await registerUser();
+  const studioId = await createStudio(owner.token);
+
+  const curator = await registerUser();
+  const teacher = await registerUser();
+  const student = await registerUser();
+  await addMember(owner.token, studioId, curator.email, ['curator']);
+  await addMember(owner.token, studioId, teacher.email, ['teacher']);
+  await addMember(owner.token, studioId, student.email, ['student']);
+
+  const staff = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/members`,
+    headers: auth(curator.token)
+  });
+  assert.equal(staff.statusCode, 403);
+  assert.equal(staff.json().error.code, 'FORBIDDEN');
+
+  const students = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/members?role=student`,
+    headers: auth(curator.token)
+  });
+  assert.equal(students.statusCode, 200);
+  assert.equal(students.json().items.length, 1);
+  assert.equal(students.json().items[0].email, student.email);
+
+  const teachersForCurator = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/teachers`,
+    headers: auth(curator.token)
+  });
+  assert.equal(teachersForCurator.statusCode, 200);
+  assert.equal(teachersForCurator.json().items.length, 1);
+  assert.equal(teachersForCurator.json().items[0].displayName, 'Тест');
+
+  const teachersForStudent = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/teachers`,
+    headers: auth(student.token)
+  });
+  assert.equal(teachersForStudent.statusCode, 200);
+  assert.equal(teachersForStudent.json().items.length, 1);
+
+  const fullStaff = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/members`,
+    headers: auth(owner.token)
+  });
+  assert.equal(fullStaff.statusCode, 200);
+  assert.equal(fullStaff.json().items.length, 4);
+});

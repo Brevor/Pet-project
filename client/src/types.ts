@@ -48,7 +48,7 @@ export interface Course {
 }
 
 export interface SessionItem {
-  id: string;
+  sessionId: string;
   courseId: string;
   courseName: string;
   roomId: string;
