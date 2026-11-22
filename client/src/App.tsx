@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { Route, Routes } from 'react-router-dom';
 import { getToken, setToken } from './api';
 import { AuthPage } from './pages/AuthPage';
+import { JoinPage } from './pages/JoinPage';
 import { StudioPage } from './pages/StudioPage';
 
 export function App() {
@@ -20,7 +22,19 @@ export function App() {
       </header>
 
       <main className="mx-auto max-w-4xl px-6 py-8">
-        {authed ? <StudioPage onLogout={logout} /> : <AuthPage onAuth={() => setAuthed(true)} />}
+        <Routes>
+          <Route path="/join/:code" element={<JoinPage />} />
+          <Route
+            path="*"
+            element={
+              authed ? (
+                <StudioPage onLogout={logout} />
+              ) : (
+                <AuthPage onAuth={() => setAuthed(true)} />
+              )
+            }
+          />
+        </Routes>
       </main>
     </div>
   );

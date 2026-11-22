@@ -4,7 +4,23 @@ import { z } from 'zod';
 import { errorBody } from '../../errors';
 import { listMemberships } from '../access/repository';
 import { currentUserId, requireAccess } from '../access/guard';
-import { archiveStudio, createStudioWithOwner, getStudio, updateStudio } from './repository';
+import { validateReferralCode } from './referral';
+import {
+  archiveStudio,
+  createStudioWithOwner,
+  getStudio,
+  updateReferralCode,
+  updateStudio,
+  type StudioView
+} from './repository';
+
+function withReferral(view: StudioView): StudioView & { referralCode: string; referralUrl: string } {
+  return {
+    ...view,
+    referralCode: view.studio.referral_code,
+    referralUrl: `/join/${view.studio.referral_code}`
+  };
+}
 
 const hourSchema = z.object({
   weekday: z.number().int().min(1).max(7),
@@ -60,7 +76,7 @@ export async function studiosRoutes(
     }
 
     const view = await createStudioWithOwner(pool, currentUserId(request)!, parsed.data);
-    return reply.code(201).send({ ...view, myRoles: ['owner'] });
+    return reply.code(201).send({ ...withReferral(view), myRoles: ['owner'] });
   });
 
   app.get('/studios/:studioId', { preHandler: [app.authenticate] }, async (request, reply) => {
@@ -71,7 +87,7 @@ export async function studiosRoutes(
     if (!view) {
       return reply.code(404).send(errorBody('NOT_FOUND', 'Студия не найдена'));
     }
-    return { ...view, myRoles: membership.roles };
+    return { ...withReferral(view), myRoles: membership.roles };
   });
 
   app.patch('/studios/:studioId', { preHandler: [app.authenticate] }, async (request, reply) => {
@@ -89,9 +105,27 @@ export async function studiosRoutes(
     if (!view) {
       return reply.code(404).send(errorBody('NOT_FOUND', 'Студия не найдена'));
     }
-    return { ...view, myRoles: membership.roles };
+    return { ...withReferral(view), myRoles: membership.roles };
   });
 
+  app.patch(
+    '/studios/:studioId/referral',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const membership = await requireAccess(pool, request, reply, 'studio.write');
+      if (!membership) return;
+
+      const body = request.body as { code?: unknown } | undefined;
+      if (typeof body?.code !== 'string') {
+        return reply.code(422).send(errorBody('VALIDATION', 'Укажите code'));
+      }
+
+      const code = validateReferralCode(body.code);
+      const stored = await updateReferralCode(pool, membership.studioId, code);
+
+      return { referralCode: stored, referralUrl: `/join/${stored}` };
+    }
+  );
   app.post(
     '/studios/:studioId/archive',
     { preHandler: [app.authenticate] },

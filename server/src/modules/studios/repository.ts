@@ -1,4 +1,11 @@
 import type { Pool, PoolClient } from 'pg';
+import { AppError } from '../../errors';
+import { generateReferralCode } from './referral';
+
+function isReferralCodeCollision(error: unknown): boolean {
+  const err = error as { code?: string; constraint?: string };
+  return err.code === '23505' && err.constraint === 'studios_referral_code_key';
+}
 
 export interface WorkingHour {
   weekday: number;
@@ -11,6 +18,7 @@ export interface StudioRow {
   id: string;
   name: string;
   timezone: string;
+  referral_code: string;
   archived_at: string | null;
   created_at: string;
 }
@@ -48,6 +56,25 @@ export async function createStudioWithOwner(
   userId: string,
   input: { name: string; timezone: string; workingHours?: WorkingHour[] }
 ): Promise<StudioView> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      return await createStudioTx(pool, userId, input);
+    } catch (error) {
+      if (isReferralCodeCollision(error) && attempt < 4) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new AppError(500, 'INTERNAL', 'Не удалось сгенерировать уникальный код студии');
+}
+
+async function createStudioTx(
+  pool: Pool,
+  userId: string,
+  input: { name: string; timezone: string; workingHours?: WorkingHour[] }
+): Promise<StudioView> {
   const client = await pool.connect();
   const hours = input.workingHours ?? defaultWorkingHours();
 
@@ -55,9 +82,9 @@ export async function createStudioWithOwner(
     await client.query('BEGIN');
 
     const { rows } = await client.query<StudioRow>(
-      `INSERT INTO studios (name, timezone) VALUES ($1, $2)
-       RETURNING id, name, timezone, archived_at, created_at`,
-      [input.name, input.timezone]
+      `INSERT INTO studios (name, timezone, referral_code) VALUES ($1, $2, $3)
+       RETURNING id, name, timezone, referral_code, archived_at, created_at`,
+      [input.name, input.timezone, generateReferralCode()]
     );
     const studio = rows[0]!;
 
@@ -83,9 +110,45 @@ export async function createStudioWithOwner(
   }
 }
 
+export async function updateReferralCode(
+  pool: Pool,
+  studioId: string,
+  code: string
+): Promise<string> {
+  try {
+    const { rows } = await pool.query<{ referral_code: string }>(
+      `UPDATE studios SET referral_code = $2 WHERE id = $1 RETURNING referral_code`,
+      [studioId, code]
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new AppError(404, 'NOT_FOUND', 'Студия не найдена');
+    }
+    return row.referral_code;
+  } catch (error) {
+    if ((error as { code?: string }).code === '23505') {
+      throw new AppError(409, 'REFERRAL_TAKEN', 'Такой код уже занят другой студией');
+    }
+    throw error;
+  }
+}
+
+export async function findStudioByReferralCode(
+  pool: Pool,
+  code: string
+): Promise<{ id: string; name: string; referral_code: string } | null> {
+  const { rows } = await pool.query<{ id: string; name: string; referral_code: string }>(
+    `SELECT id, name, referral_code
+       FROM studios
+      WHERE lower(referral_code) = lower($1) AND archived_at IS NULL`,
+    [code]
+  );
+  return rows[0] ?? null;
+}
+
 export async function getStudio(pool: Pool, studioId: string): Promise<StudioView | null> {
   const { rows } = await pool.query<StudioRow>(
-    `SELECT id, name, timezone, archived_at, created_at FROM studios WHERE id = $1`,
+    `SELECT id, name, timezone, referral_code, archived_at, created_at FROM studios WHERE id = $1`,
     [studioId]
   );
   const studio = rows[0];

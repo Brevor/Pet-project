@@ -8,8 +8,8 @@
 
 ## 1. Текущее состояние
 
-- Реализованы M0–M6: каркас, схема (4 миграции), auth, студия и персонал, залы и курсы,
-  расписание, docker-деплой на 8080. **39 тестов** зелёные.
+- Реализованы M0–M7: каркас, схема (5 миграций), auth, студия и персонал, залы и курсы,
+  расписание, docker-деплой на 8080, онбординг и реферальная ссылка. **46 тестов** зелёные.
 - Требования обновлены до **v0.3.1 (approved)**: онбординг и реферальная ссылка; архитектура
   и контракты синхронизированы; `HANDOFF.md` передан архитектору.
 - **D1 подтверждён 2026-11-22 дополнительно:** согласовано добавление `studios.referral_code`
@@ -194,26 +194,18 @@ D1 подтверждён пользователем, D6 закрыт: PostgreSQ
 | D-04 | Документация и переменные | `deploy/README.md`, `.env.compose.example` | инструкция воспроизводима | ✅ |
 | D-05 | Первый запуск и smoke-тест | — | `curl :8080/health` → 200 | ✅ 200; по пути исправлены: том PG18, `allowBuilds`, `tsconfig.base.json`, префикс `/api/v1` |
 
-### M7. Онбординг и реферальная ссылка — план 2026-11-22
+### M7. Онбординг и реферальная ссылка — выполнено 2026-11-22
 
-Основание: `doc/requirements/studio.md` v0.3.1 (**approved**), `doc/architecture.md` и
-`doc/contracts.md` обновлены. D1 (схема) согласован пользователем 2026-11-22.
-
-| ID | Задача | Файлы | Готово, когда | Требования |
+| ID | Задача | Файлы | Готово, когда | Статус |
 |---|---|---|---|---|
-| T-29 | Миграция 005: `studios.referral_code NOT NULL` + `UNIQUE (lower(referral_code))`, бэкфилл существующих студий | `migrations/005_referral_code.sql` | накатана; у всех существующих студий уникальный код; повторный запуск идемпотентен | REF-1, REF-2 |
-| T-30 | Генерация кода при создании студии, выдача `referralCode`/`referralUrl` в `POST /studios` и `GET /studios/:id` | `server/src/modules/studios/repository.ts`, `routes.ts` | ответ содержит ссылку; коллизия кода → повторная генерация, не 500 | REF-1 |
-| T-31 | `PATCH /api/v1/studios/:id/referral` | `server/src/modules/studios/routes.ts` | 200; 422 `INVALID_REFERRAL`; 409 `REFERRAL_TAKEN`; 403 без `studio.write` | REF-2, REF-3 |
-| T-32 | Публичные маршруты `GET /join/:code`, `POST /join/:code/register`, `POST /join/:code/join` | `server/src/modules/join/*`, `app.ts` | регистрация по коду даёт роль `student`; повтор → 409; роли сотрудника не выдаются; старый код → 404 | REF-4…REF-7 |
-| T-33 | Онбординг клиента: при отсутствии членств — выбор «создать студию / присоединиться», без принудительной формы | `client/src/pages/OnboardingPage.tsx`, `StudioPage.tsx` | ACC-5, ACC-6: пользователь без студии видит выбор | ACC-4…ACC-7 |
-| T-34 | Страница `/join/:code`: название студии, регистрация или вход, присоединение | `client/src/pages/JoinPage.tsx`, `App.tsx` | REF-5, REF-6: регистрация по ссылке приводит в студию | REF-5, REF-6 |
-| T-35 | Редактирование ссылки в настройках студии (владелец/администратор) | `client/src/pages/StudioSettings*` | смена кода обновляет ссылку; старый адрес → 404 | REF-3, REF-4 |
-| T-36 | Тесты: миграция и бэкфилл, join flow, смена кода, права, обновить e2e | `server/test/join.test.ts`, `server/test/e2e-studio.test.ts` | все наборы зелёные, включая существующие 39 | REF-1…REF-8, ACC-4…ACC-7 |
-
-**Порядок:** T-29 → T-30 → T-31; T-29 → T-32 → T-34; T-33 и T-35 — после T-30/T-32; T-36 — в конце.
-
-**Внимание:** в базе уже есть студии (ваши «Супер студия» и «Студия 2»), поэтому миграция обязана
-заполнить `referral_code` для существующих строк, иначе `NOT NULL` не накатится.
+| T-29 | Миграция 005: `referral_code` + уникальный индекс + бэкфилл | `migrations/005_referral_code.sql` | у всех студий уникальный код | ✅ проверено на отдельной БД: 2 студии → 2 уникальных кода, без NULL |
+| T-30 | Генерация кода при создании, `referralCode`/`referralUrl` в `POST /studios` и `GET /studios/:id` | `modules/studios/referral.ts`, `repository.ts`, `routes.ts` | коллизия → повторная генерация | ✅ |
+| T-31 | `PATCH /api/v1/studios/:id/referral` | `modules/studios/routes.ts` | 200 / 422 `INVALID_REFERRAL` / 409 `REFERRAL_TAKEN` / 403 | ✅ |
+| T-32 | Публичные `GET /join/:code`, `POST /join/:code/register`, `POST /join/:code/join` | `modules/join/*`, `app.ts` | роль `student`, дубль → 409, старый код → 404 | ✅ |
+| T-33 | Онбординг: выбор «создать студию / присоединиться» | `client/src/pages/OnboardingPage.tsx`, `StudioPage.tsx` | ACC-5, ACC-6 | ✅ |
+| T-34 | Страница `/join/:code` | `client/src/pages/JoinPage.tsx`, `App.tsx` | REF-5, REF-6 | ✅ |
+| T-35 | Редактирование ссылки в карточке студии | `client/src/pages/StudioPage.tsx` | REF-3, REF-4 | ✅ |
+| T-36 | Тесты: миграция, join, смена кода, права; существующие наборы | `server/test/join.test.ts`, `db.test.ts` | все наборы зелёные | ✅ 7 новых, всего 46 |
 ## 5. Граф зависимостей
 
 ```

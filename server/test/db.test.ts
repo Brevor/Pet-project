@@ -28,7 +28,8 @@ async function seedStudio(client: Client): Promise<{ studioId: string; roomId: s
   const userId = user.rows[0]!.id;
 
   const studio = await client.query<{ id: string }>(
-    "INSERT INTO studios (name) VALUES ('Тестовая студия') RETURNING id"
+    "INSERT INTO studios (name, referral_code) VALUES ('Тестовая студия', $1) RETURNING id",
+    [`t${Math.random().toString(36).slice(2, 10)}`]
   );
   const studioId = studio.rows[0]!.id;
 

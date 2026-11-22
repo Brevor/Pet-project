@@ -4,6 +4,7 @@ import type { Pool } from 'pg';
 import { AppError, errorBody } from './errors';
 import { authRoutes } from './modules/auth/routes';
 import { coursesRoutes } from './modules/courses/routes';
+import { joinRoutes } from './modules/join/routes';
 import { membersRoutes } from './modules/members/routes';
 import { roomsRoutes } from './modules/rooms/routes';
 import { scheduleRoutes } from './modules/schedule/routes';
@@ -48,6 +49,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     app.register(roomsRoutes, { prefix, pool: options.pool });
     app.register(coursesRoutes, { prefix, pool: options.pool });
     app.register(scheduleRoutes, { prefix, pool: options.pool });
+    app.register(joinRoutes, {
+      prefix,
+      pool: options.pool,
+      jwtExpiresIn: options.jwtExpiresIn ?? '24h'
+    });
   }
 
   app.setNotFoundHandler(async (request, reply) =>
