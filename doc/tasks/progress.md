@@ -1,20 +1,24 @@
 # План задач: модуль «ядро студии» (Фаза 1)
 
-> **Версия:** 1.0.0
+> **Версия:** 1.1.0
 > **Дата:** 2026-11-22
 > **Роль:** TechLead
-> **Входы:** `doc/requirements/studio.md` (approved), `doc/architecture.md`, `doc/contracts.md`
-> **Ветка:** `feature/studio-architecture`
+> **Входы:** `doc/requirements/studio.md` (approved, v0.4.0), `doc/architecture.md` v1.1.0, `doc/contracts.md` v1.1.0
+> **Ветка:** `feature/studio-phase-2`
 
 ## 1. Текущее состояние
 
 - Реализованы M0–M7: каркас, схема (5 миграций), auth, студия и персонал, залы и курсы,
   расписание, docker-деплой на 8080, онбординг и реферальная ссылка. **46 тестов** зелёные.
-- Требования обновлены до **v0.3.1 (approved)**: онбординг и реферальная ссылка; архитектура
-  и контракты синхронизированы; `HANDOFF.md` передан архитектору.
-- **D1 подтверждён 2026-11-22 дополнительно:** согласовано добавление `studios.referral_code`
-  (миграция 005). D6 закрыт (PostgreSQL 18 в контейнере), D2/Q7 закрыт реферальной ссылкой.
-- Открыты только Q3 (несколько студий) и Q8 (роль «родитель») — вне M7.
+- Требования — **v0.4.0 (approved)**. Архитектура и контракты — **v1.1.0** (Architect, 2026-11-22),
+  изменения 1.1.0 **ещё не реализованы**: это и есть содержание M8.
+- **База проверок 2026-11-22** (ветка `feature/studio-phase-2`): `tsc` server — 0, `tsc` client — 0,
+  eslint — 0. Выборочно прогнаны наборы: db 5/5, studios 9/9, isolation 4/4, m5 6/6 — 24/24.
+  `node --test` в песочнице не запускается (spawn EPERM) — наборы запускаются пофайлово:
+  `node server/dist/test/<suite>.test.js`.
+- Открыты только Q3 (несколько студий) и Q8 (роль «родитель») — вне M8.
+- Решение **D7** (трактовка матрицы 4.1 для куратора) — на подтверждение при приёмке UI,
+  API-задачи не блокирует (§2).
 - Клиентская сборка `vite build` в песочнице не запускается (см. §4.2), собирается в Docker.
 
 ## 2. Блокеры до старта кодинга
@@ -25,10 +29,16 @@
 | ~~**D2**~~ | Q7: присоединение ученика | — | ✅ закрыт 2026-11-22: реферальная ссылка студии, задача **T-32** |
 | **D3** | Q3: может ли пользователь быть в нескольких студиях | Только UI-переключатель студий, задача `B-02` | Ответ «да/нет» |
 | **D4** | Q8: роль «родитель» | Вне Фазы 1, задача `B-03` | Не требуется для старта |
-| **D5** | Список npm-зависимостей (§3) | Все задачи | Подтвердить пакеты (Decision Gate: внешние зависимости) |
-| **D6** | Нет PostgreSQL и Docker (§4) | M1 и далее | Установить PostgreSQL или дать строку подключения |
+| ~~**D5**~~ | Список npm-зависимостей (§3) | — | ✅ закрыт 2026-11-22, пакеты установлены |
+| ~~**D6**~~ | Нет PostgreSQL и Docker (§4) | — | ✅ закрыт 2026-11-22: PostgreSQL 18, база `studioflow` |
+| **D7** | Трактовка матрицы 4.1: «Команда» — owner/admin, «Ученики» — отдельная вкладка для куратора (`architecture.md` §14.4) | UI-задачи **T-44**, **T-48** | Подтвердить при приёмке UI; T-37…T-43, T-45…T-47, T-49 не блокирует |
 
-**Вывод: M0–M6 выполнены, D1/D2/D5/D6 закрыты. К M7 (T-29…T-36) можно приступать сразу; открытых блокеров нет.**
+**Вывод:** M0–M7 выполнены, открытых технических блокеров нет. M8 можно начинать сразу
+с T-37 и T-45 (независимы); T-39 → T-40 идут последовательно — у них общие файлы
+`members/routes.ts` и `members/repository.ts`.
+
+**Согласовано ранее:** `courses.teacher_membership_id` (миграция 006) — Decision Gate закрыт
+2026-11-22, таблица заявок преподавателей не нужна (Q9 закрыт).
 
 ## 3. Инструменты: что есть и чего нет
 
@@ -40,46 +50,49 @@
 | pnpm | есть | 11.28.5 | запускается через Node; в PATH отсутствует |
 | npm registry | доступен | HTTP 200 | `pnpm view react version` → 19.3.1 |
 | git | есть | 2.56.1 | из GitHub Desktop, в PATH отсутствует |
-| PostgreSQL | **нет** | — | ни `psql`, ни службы, ни установки |
-| `btree_gist` | **нет** | — | идёт с contrib PostgreSQL; нужен `CREATE EXTENSION` (права суперпользователя) |
-| Docker | **нет** | — | локальную БД контейнером не поднять |
+| PostgreSQL | **есть** | 18 | локально `postgres://postgres@127.0.0.1:5432/studioflow`; в Docker — том `pgdata` |
+| `btree_gist` | есть | — | миграция 004 применилась |
+| Docker | **есть** | — | `docker compose` на 8080, api healthy |
 | VS Build Tools | **нет** | — | native-модули не собрать → только префиксы с prebuilt-бинарниками |
-| winget | есть | — | можно поставить PostgreSQL (нужны права администратора) |
+| winget | есть | — | можно ставить пакеты (нужны права администратора) |
 
-### 3.1. Зависимости, которые потребуются (требуют подтверждения)
+### 3.1. Зависимости (подтверждены, не меняются в M8)
 
-| Пакет | Где | Зачем | Альтернатива без пакета |
-|---|---|---|---|
-| `fastify` | server | HTTP-сервер (стек из proposal §6) | — |
-| `@fastify/jwt` | server | JWT, ACC-3 | `jsonwebtoken` (ручная обвязка) |
-| `@node-rs/argon2` | server | хеширование паролей | `argon2` (native, не соберётся без Build Tools) |
-| `pg` | server | драйвер PostgreSQL | — |
-| `zod` | server | валидация тел запросов, NFR-4 | ручные проверки (больше кода) |
-| `react`, `react-dom` | client | UI | — |
-| `vite`, `@vitejs/plugin-react` | client | сборка | — |
-| `tailwindcss` | client | стили (proposal §6) | — |
-| `react-router-dom` | client | маршруты экранов | собственный роутер (не надо) |
-| `typescript` | всё | strict mode (AGENTS.md) | — |
-| `vitest` | всё | тесты (`pnpm test`) | node:test (встроен) |
-| `eslint`, `prettier` | всё | `pnpm lint` | — |
-| `@types/node` | server | типы | — |
+| Пакет | Где | Зачем |
+|---|---|---|
+| `fastify`, `@fastify/jwt` | server | HTTP и JWT (ACC-3) |
+| `@node-rs/argon2` | server | хеширование паролей |
+| `pg` | server | драйвер PostgreSQL |
+| `zod` | server | валидация тел запросов (NFR-4) |
+| `react`, `react-dom`, `react-router-dom` | client | UI и маршруты |
+| `vite`, `@vitejs/plugin-react`, `tailwindcss` | client | сборка и стили |
+| `typescript`, `eslint`, `prettier` | всё | strict, lint |
+| `@types/node`, `@types/pg`, `@types/react`, `@types/react-dom` | всё | типы |
 
-**Сознательно не берём:** ORM (достаточно SQL + `pg`), `luxon`/`date-fns`
-(пересчёт часового пояса делается в PostgreSQL через `AT TIME ZONE`), `tsx`
-(Node 24 исполняет TypeScript при разработке; сборка — `tsc`), любой UI-кит кроме Tailwind.
+**Новые зависимости в M8 не добавляются** — в том числе для UI-тестов: DOM-проверки ROL-11/12
+выполняются вручную в браузере, автоматизируются только API-сценарии (`node:test`).
+
+**Сознательно не берём:** ORM, `luxon`/`date-fns`, `tsx`, любой UI-кит кроме Tailwind,
+`jsdom`/`testing-library` (новая зависимость + отдельный раннер).
 
 ### 3.2. Рабочая схема запуска
 
 ```
-pnpm install
 pnpm typecheck   # tsc --noEmit во всех пакетах
 pnpm lint        # eslint
 pnpm test        # vitest
 ```
 
-Node и pnpm не в PATH — задачи `T-01` и `T-04` должны зафиксировать их пути
-в `package.json` (`engines`) и в README, а Coder запускать через полный путь
+Node и pnpm не в PATH — запускать через полный путь
 `C:\Users\vfedu\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe`.
+В песочнице вместо `pnpm run`:
+
+```
+node node_modules/typescript/lib/tsc.js -p server/tsconfig.json
+node node_modules/typescript/lib/tsc.js -p client/tsconfig.json --noEmit
+node node_modules/eslint/bin/eslint.js .
+node server/dist/test/<suite>.test.js      # DATABASE_URL обязателен, запуск пофайлово
+```
 
 ## 4. Декомпозиция
 
@@ -87,7 +100,10 @@ Node и pnpm не в PATH — задачи `T-01` и `T-04` должны заф�
 > Задачи M0–M5 (сервер, БД, React) переводятся в статус `deferred` и не ставятся в работу,
 > пока не будут закрыты D1, D5, D6. Актуальный трек — раздел 4.0.
 
-### 4.0. Трек «HTML-прототип» (актуальный)
+> **Обновление 2026-11-22:** D1, D5, D6 закрыты, сервер и клиент реализованы (M0–M7).
+> Границы M8 — требования v0.4.0.
+
+### 4.0. Трек «HTML-прототип» (историческое решение, не актуально)
 
 Файлы: `prototype/index.html`, `prototype/app.js`, `prototype/logic.test.mjs`.
 Ограничения: без сервера, без БД, без внешних зависимостей; данные в `localStorage`;
@@ -107,7 +123,7 @@ Node и pnpm не в PATH — задачи `T-01` и `T-04` должны заф�
 
 Стек из раздела 3 в силе. **2026-11-22 пользователь подтвердил продолжение реализации**: D5 закрыт
 (пакеты установлены, список в §3.1), M0 выполнен. D1 (схема БД) и D6 (PostgreSQL) открыты —
-M1+ не начинать до их закрытия.
+M1+ не начинать до их закрытия. *(Исторический статус; D1 и D6 закрыты 2026-11-22.)*
 
 ### M0. Каркас — выполнено 2026-11-22
 
@@ -116,7 +132,7 @@ M1+ не начинать до их закрытия.
 | T-01 | Монорепо и инструменты: workspace, tsconfig strict, eslint, prettier, `.gitignore`, `.env.example` | `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `eslint.config.js`, `.prettierrc`, `.gitignore` | install + typecheck + lint | ✅ выполнено (vitest → `node:test`, §4.2) |
 | T-02 | Каркас сервера: Fastify, конфиг из env, конверт ошибок, `GET /health` | `server/**` | `/health` → 200; ошибка → конверт | ✅ выполнено, 3 теста |
 | T-03 | Каркас клиента: Vite + React + TS + Tailwind, маршрутизация | `client/**` | сборка клиента проходит | ⚠️ код и typecheck готовы, `vite build` не проверен (§4.2) |
-| T-04 | Окружение БД: PostgreSQL, `btree_gist`, миграции, пул | `server/src/db/**`, `migrations/**` | миграция на чистой БД | ⛔ ждёт D6 |
+| T-04 | Окружение БД: PostgreSQL, `btree_gist`, миграции, пул | `server/src/db/**`, `migrations/**` | миграция на чистой БД | ✅ выполнено |
 
 ### 4.2. Отклонения окружения (2026-11-22)
 
@@ -125,7 +141,7 @@ M1+ не начинать до их закрытия.
 
 | Что | Штатно | В песочнице |
 |---|---|---|
-| Тесты сервера | `vitest run` | `node:test` + `node server/dist/test/app.test.js` |
+| Тесты сервера | `vitest run` | `node:test` + `node server/dist/test/<suite>.test.js` пофайлово |
 | Проверки | `pnpm typecheck/lint/test` | `node node_modules/typescript/lib/tsc.js`, `node node_modules/eslint/bin/eslint.js .` |
 | `node_modules` | изолированный линкер pnpm | `nodeLinker: hoisted` — junction-ссылки в песочнице ломаются |
 | Сборка клиента | `vite build` | недоступна: esbuild не может запустить сервис |
@@ -139,12 +155,12 @@ D1 подтверждён пользователем, D6 закрыт: PostgreSQ
 
 | ID | Задача | Файлы | Готово, когда | Статус |
 |---|---|---|---|---|
-| T-04 | Миграционный механизм: runner, идемпотентность, `schema_migrations` | `server/src/db/migrate.ts`, `server/src/db/pool.ts` | повторный запуск → «нечего применять» | ✅ 4 миграции, повтор идемпотентен |
+| T-04 | Миграционный механизм: runner, идемпотентность, `schema_migrations` | `server/src/db/migrate.ts`, `server/src/db/pool.ts` | повторный запуск → «нечего применять» | ✅ 5 миграций, повтор идемпотентен |
 | T-05 | `users`, `studios`, `studio_working_hours` | `migrations/001_users_studios.sql` | уникальный `lower(email)`, CHECK часов | ✅ накатано |
 | T-06 | `memberships`, `membership_roles`, частичный уникальный индекс владельца | `migrations/002_memberships.sql` | второй `owner` → ошибка БД | ✅ тест: SQLSTATE 23505 |
 | T-07 | `rooms`, `courses`, уникальность имён, CHECK длины 2–140 | `migrations/003_rooms_courses.sql` | дубль → ошибка; 141 символ → ошибка | ✅ накатано |
 | T-08 | `class_series`, `class_sessions`, exclusion-ограничения | `migrations/004_schedule.sql` | пересечения ловятся БД (23P01) | ✅ тесты: зал, преподаватель, отменённый слот |
-| T-09 | Слой доступа: пул, транзакции, студийно-ограниченные репозитории | `server/src/db/repositories/*.ts` | запрос без `studioId` невозможен; тест изоляции | ⏳ следующая задача |
+| T-09 | Слой доступа: пул, транзакции, студийно-ограниченные репозитории | `server/src/db/repositories/*.ts` | запрос без `studioId` невозможен; тест изоляции | ✅ реализовано в модулях, тест isolation |
 
 ### M2. Аутентификация и права — T-10, T-11 выполнены 2026-11-22
 
@@ -183,7 +199,8 @@ D1 подтверждён пользователем, D6 закрыт: PostgreSQ
 | T-25 | Мутации: PATCH, DELETE, cancel, удаление серии | `server/src/modules/schedule/routes.ts` | отменённый сеанс освобождает слот | ✅ |
 | T-26 | UI расписания: период, фильтры, создание серии и разового, отмена | `client/src/pages/ScheduleTab.tsx` | создание серии и просмотр периода | ✅ |
 | T-27 | Тесты изоляции и прав | `server/test/isolation.test.ts` | 403 `NOT_A_MEMBER`, роли, общий просмотр расписания | ✅ 4 теста |
-| T-28 | E2E-сценарий §12 | `server/test/e2e-studio.test.ts` | сквозной сценарий | ✅ |
+| T-28 | E2E-сценарий §12 | `server/test/e2e-studio.test.ts` | сквозной сценарий | ✅ (до v0.4.0) |
+
 ### M6. Локальный деплой (Docker Compose) — выполнено 2026-11-22
 
 | ID | Задача | Файлы | Готово, когда | Статус |
@@ -206,6 +223,38 @@ D1 подтверждён пользователем, D6 закрыт: PostgreSQ
 | T-34 | Страница `/join/:code` | `client/src/pages/JoinPage.tsx`, `App.tsx` | REF-5, REF-6 | ✅ |
 | T-35 | Редактирование ссылки в карточке студии | `client/src/pages/StudioPage.tsx` | REF-3, REF-4 | ✅ |
 | T-36 | Тесты: миграция, join, смена кода, права; существующие наборы | `server/test/join.test.ts`, `db.test.ts` | все наборы зелёные | ✅ 7 новых, всего 46 |
+
+### M8. Требования v0.4.0 — запланировано 2026-11-22
+
+Основание: `architecture.md` v1.1.0, `contracts.md` v1.1.0. Новых таблиц, кроме миграции 006,
+нет; новых зависимостей нет.
+
+Проверки для **каждой** задачи M8: `tsc` server и client = 0, eslint = 0, целевые наборы
+тестов из критерия — зелёные. Клиентская сборка проверяется в Docker (`vite build` в песочнице
+не работает, §4.2).
+
+| ID | Задача | Файлы | Готово, когда | Требования |
+|---|---|---|---|---|
+| **T-37** | Миграция 006: `courses.teacher_membership_id` + составной FK `(studio_id, teacher_membership_id) → memberships (studio_id, id)` `ON DELETE SET NULL (teacher_membership_id)` | `migrations/006_course_teacher.sql`, `server/test/db.test.ts` | миграция применилась, повторный запуск — «нечего применять»; удаление членства обнуляет ссылку в курсе; вставка преподавателя чужой студии → SQLSTATE `23503`; тесты db зелёные | CLS-7 |
+| **T-38** | Курсы: `teacherMembershipId` в создании/правке, `teacherMembershipId` + `teacherName` в ответах, `PATCH` с `null` снимает преподавателя | `server/src/modules/courses/repository.ts`, `server/src/modules/courses/routes.ts`, `server/test/m4.test.ts` | создание с преподавателем возвращает `teacherName`; `PATCH null` обнуляет (не COALESCE); чужое/неактивное членство или без роли `teacher` → `422 NOT_A_TEACHER`; тесты m4 зелёные | CLS-7, CLS-8 |
+| **T-39** | Права: `members.read` только owner/admin; `GET /members?role=student` по `students.write`; новый `GET /studios/:id/teachers` (`membershipId`, `displayName`) по `schedule.read` | `server/src/modules/access/rbac.ts`, `server/src/modules/members/repository.ts`, `server/src/modules/members/routes.ts`, `server/test/isolation.test.ts`, `server/test/studios.test.ts` | куратор: `/members` → 403, `/members?role=student` → 200; ученик и преподаватель: `/teachers` → 200, `/members` → 403; преподаватель без роли `teacher` в `/teachers` не попадает; тесты зелёные | ROL-7, ROL-12, SCH-1 |
+| **T-40** | `PATCH /members`: свои роли менять нельзя; владельца выдаёт/снимает только owner; второй owner не доходит до БД | `server/src/modules/members/routes.ts`, `server/src/modules/members/repository.ts`, `server/test/studios.test.ts` | self-PATCH → 403; админ на владельце или с `owner` в наборе → 403; снятие `owner` с последнего → 409 `LAST_OWNER`; нет 500 по `23505`; тесты зелёные | ROL-6, STF-11, ACC-9, STF-5 |
+| **T-41** | Сеансы: убрать `durationMin` из `POST /sessions` (разовый и серия); длительность из курса; `teacherMembershipId` необязателен | `server/src/modules/schedule/routes.ts`, `server/src/modules/schedule/repository.ts`, `server/test/m5.test.ts` | `durationMin`/`series.durationMin` → 422 `VALIDATION` с `details.fields`; длительность = `courses.default_duration_min`; преподаватель из курса, явный главнее; нет нигде → 422; `class_series.duration_min` — снимок; тесты m5 зелёные | SCH-1, SCH-2, CLS-7, CLS-8 |
+| **T-42** | `PATCH /sessions`: `durationMin` → 422; при переносе сохраняется собственная длительность сеанса | `server/src/modules/schedule/routes.ts`, `server/src/modules/schedule/repository.ts`, `server/test/m5.test.ts` | перенос 120-мин сеанса даёт 120 даже если курс стал 90; `durationMin` → 422; тесты зелёные | SCH-10, CLS-8 |
+| **T-43** | `GET /schedule`: идентификатор сеанса — `sessionId` (сейчас `id`); клиент переведён на новое поле | `server/src/modules/schedule/repository.ts`, `client/src/types.ts`, `client/src/pages/ScheduleTab.tsx`, `server/test/m5.test.ts` | ответ и клиент используют `sessionId`; POST и cancel не меняются; тесты зелёные | contracts §7 |
+| **T-44** | UI: вкладки по матрице, скрытие действий, удаление поля «Длительность» | `client/src/pages/StudioPage.tsx`, `client/src/pages/ScheduleTab.tsx` | teacher/assistant/student видят только «Расписание»; в DOM нет формы сеанса, «Отменить», «Удалить»; куратор не видит «Команду»; поля длительности нет, `durationMin` не отправляется; преподаватель подставляется из курса, список — `GET /teachers`; скрыто отсутствием, а не `disabled` | ROL-11, ROL-12, CLS-8, SCH-10 |
+| **T-45** | UI «Залы»: форма редактирования зала (название, вместимость, описание) | `client/src/pages/RoomsTab.tsx` | «Редактировать» открывает форму с текущими значениями, сохранение через `PATCH`, список обновляется; недоступна роли без `rooms.write` (вкладка скрыта) | ROM-3, ROM-7 |
+| **T-46** | UI «Команда»: смена набора ролей участника; ограничения владельца | `client/src/pages/StaffTab.tsx` | чекбоксы ролей в строке участника сохраняются через `PATCH`; «Владелец» в наборе доступен только owner; «Передать владение» — только owner; свои роли не редактируются | STF-11, ACC-9, ROL-6 |
+| **T-47** | UI «Курсы»: преподаватель по умолчанию и правка курса (длительность) | `client/src/pages/CoursesTab.tsx` | select преподавателя из `GET /teachers` в создании и правке; форма правки меняет `defaultDurationMin`; в списке `teacherName`; поле скрыто без `courses.write` | CLS-7, CLS-8, ROL-11 |
+| **T-48** | UI «Ученики»: отдельная вкладка, добавление ученика, исключение | `client/src/pages/StudentsTab.tsx` (новый), `client/src/pages/StudioPage.tsx`, `client/src/types.ts` | вкладка у owner/admin/curator; список `GET /members?role=student`; добавление с показом временного пароля; исключение; у teacher/assistant/student вкладки нет | STF-9, ROL-12 |
+| **T-49** | E2E API по сценарию §12 требований | `server/test/e2e-studio.test.ts` | через API покрыты шаги 1–5 и 9–12: роли, смена набора, длительность из курса, `durationMin` → 422, конфликт зала, изоляция; шаги 6–8 (отсутствие кнопок и вкладок в DOM) — ручная проверка по чек-листу `architecture.md` §14.5; тест зелёный | §12, NFR-1…NFR-4 |
+
+**Порядок внутри M8:** T-37 → T-38 → T-47; T-37 → T-41 → T-42 → T-43 → T-44; T-39 → T-44, T-48;
+T-40 → T-46; T-45 независима; T-49 — после T-37…T-43.
+
+**Оценка:** 13 задач, каждая — один цикл Coder + Reviewer. API-часть (T-37…T-43) — 7 задач,
+UI (T-44…T-48) — 5 задач, E2E (T-49) — 1.
+
 ## 5. Граф зависимостей
 
 ```
@@ -223,6 +272,13 @@ M7: T-29 → T-30 → T-31
     T-29 → T-32 → T-34
     T-30 → T-35
     T-33 → T-36, T-34 → T-36
+
+M8: T-37 → T-38 → T-47
+    T-37 → T-41 → T-42, T-43 → T-44
+    T-39 → T-44, T-48
+    T-40 → T-46
+    T-45 (независима)
+    T-37…T-43 → T-49
 ```
 
 ## 6. Заблокированные задачи (не ставить в работу)
@@ -232,6 +288,7 @@ M7: T-29 → T-30 → T-31
 | B-01 | ~~`POST /studios/{id}/join`~~ — снято: Q7 закрыт, задача **T-32** (реферальная ссылка) | — |
 | B-02 | UI переключателя студий для пользователя с несколькими студиями | Q3 без ответа |
 | B-03 | Роль «родитель» и права на кабинет ребёнка | Q8 без ответа, вне Фазы 1 |
+| B-04 | Оптимизация индекса `courses(teacher_membership_id)` | Не блокирует, отложено осознанно (`architecture.md` §5.7, §13.9) |
 
 ## 7. Что не входит в Фазу 1
 
@@ -246,6 +303,6 @@ M7: T-29 → T-30 → T-31
 3. M3 + M4 — справочники и персонал. ✅
 4. M5 — расписание; сдача сквозным сценарием T-28. ✅
 5. M6 — деплой docker compose на 8080. ✅
-6. M7 — онбординг и реферальная ссылка: T-29…T-36, сдача сценарием §12 требований.
-
-
+6. M7 — онбординг и реферальная ссылка: T-29…T-36, сдача сценарием §12 требований. ✅
+7. M8 — требования v0.4.0: API T-37…T-43 → UI T-44…T-48 → E2E T-49; приёмка по §12
+   требований v0.4.0 и матрице 4.1. ⏳ запланировано
