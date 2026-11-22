@@ -1,11 +1,15 @@
 # Контракты API: ядро студии
 
-> **Версия:** 1.2.0
+> **Версия:** 1.5.1
 > **Дата:** 2026-11-22
 > **Роль:** Architect
-> **Основание:** `doc/architecture.md` (v1.2.0), `doc/requirements/studio.md` (approved, v0.4.0)
-> **Статус:** действует; соответствует реализации M0–M7. Изменения 1.1.0 (§0) ещё не реализованы.
-> Изменения 1.2.0 — только навигация (индекс разделов), контракты не менялись.
+> **Основание:** `doc/architecture.md` (v1.7.1), `doc/requirements/studio.md` (approved, v0.9.0), `doc/requirements/profile.md` (approved, v0.4.0)
+> **Статус:** действует; соответствует реализации M0–M9. Изменения 1.1.0 (§0) реализованы в M8.
+> Изменения 1.3.1 — уточнение семантики полей, которые уже есть в коде (`weeklyLoadHours`, `q`,
+> границы периода расписания). Изменения 1.3.2 — требования v0.5.0 (недельный календарь,
+> SCH-11…SCH-18) контрактов не касаются: неделя запрашивается тем же `GET /schedule`,
+> новых полей и эндпоинтов нет. Изменения 1.4.0 — требования v0.6.0: поле `color` у курса
+> (§6, палитра 12 значений, Q12); новых эндпоинтов нет, палитра — константа контракта.
 
 > **Индекс разделов:**
 > - §0 Изменения версии 1.1.0
@@ -80,7 +84,9 @@
 
 ```json
 {
-  "user": { "id": "…", "email": "…", "displayName": "Анна" },
+  "user": { "id": "…", "email": "…", "displayName": "Анна", "firstName": "Анна", "lastName": "Ковалёва",
+            "phone": "+7 916 123-45-67", "socialUrl": "https://vk.com/anna", "messengerContact": "@anna",
+            "about": "Преподаю hip-hop с 2015 года", "avatarUrl": "/api/v1/avatars/u_8f3a.png" },
   "memberships": [
     { "studioId": "…", "studioName": "Dance Lab", "roles": ["owner"], "status": "active" }
   ]
@@ -88,6 +94,54 @@
 ```
 
 Пустой массив `memberships` — валидное состояние (ACC-4): клиент показывает экран создания студии.
+
+`displayName` — вычисляемое: `Имя Фамилия` → `display_name` → email (PRF-9, Q15).
+`avatarUrl` — `null`, если аватар не загружен.
+
+### PATCH /me
+
+Личные поля профиля (PRF-2…PRF-5). JWT обязателен, студийный контекст не нужен.
+
+```json
+{ "firstName": "Анна", "lastName": "Ковалёва", "phone": "+7 916 123-45-67",
+  "socialUrl": "https://vk.com/anna", "messengerContact": "@anna", "about": "…" }
+```
+
+`200` → `{ "user": { … } }` в форме `GET /me`.
+
+| Код | Когда |
+|---|---|
+| `422 VALIDATION` | `firstName`/`lastName` пусты или > 80 символов (обязательны, Q16); `phone` не по формату или > 32; `socialUrl` без схемы `http(s)://` или > 200; `messengerContact` > 100; `about` > 500 — `details.fields.<поле>` |
+| `422 VALIDATION` | в теле передан `email` — email является логином и не меняется (PRF-2, Q13) |
+| `401 UNAUTHORIZED` | нет или невалидный токен |
+
+### POST /me/avatar
+
+Тело — **сырые байты изображения**, `Content-Type: image/jpeg | image/png | image/webp`, до 2 МБ
+(multipart не используется: сервер принимает body как `Buffer`). Файл сохраняется в хранилище
+(том), в `users.avatar_key` — ключ (Q18).
+
+`200` → `{ "user": { … } }` с новым `avatarUrl`. Ошибки: `422 VALIDATION`
+(`details.fields.avatar`) — неверный тип, размер больше 2 МБ или пустое тело; `401 UNAUTHORIZED`.
+
+### DELETE /me/avatar
+
+`204`. Удаляет файл и обнуляет `avatar_key`; повторный вызов — тоже `204` (идемпотентно).
+
+### POST /me/password
+
+```json
+{ "currentPassword": "…", "newPassword": "…" }
+```
+
+`204`. Ошибки: `401 INVALID_CREDENTIALS` (текущий неверен), `422 VALIDATION`
+(`newPassword` < 8 символов или совпадает с текущим). Текущая сессия остаётся рабочей (PRF-6).
+
+### GET /avatars/{key} — публичный
+
+Отдаёт файл аватара (`Content-Type` по типу изображения, кеш `max-age=86400`).
+`404 NOT_FOUND`, если ключ не существует. Доступен без JWT: аватар виден всем участникам (Q17).
+
 
 ## 3. Студии
 
@@ -119,7 +173,8 @@
 
 ### POST /studios/{studioId}/archive
 
-`204`, пустое тело. Право: `studio.archive` (только owner). После архивации студия доступна только owner.
+`204`, пустое тело. Право: `studio.archive` (только owner). После архивации студия доступна только
+owner: остальные роли получают `403 NOT_A_MEMBER` на всех студийных эндпоинтах.
 
 ### PATCH /studios/{studioId}/referral
 
@@ -179,15 +234,22 @@
 {
   "items": [
     { "membershipId": "…", "userId": "…", "email": "…", "displayName": "Анна",
+      "firstName": "Анна", "lastName": "Ковалёва", "avatarUrl": "/api/v1/avatars/u_8f3a.png",
+      "about": "Преподаю hip-hop с 2015 года",
       "roles": ["teacher", "curator"], "status": "active" }
   ],
   "total": 1
 }
 ```
 
-Право: `members.read` — только **owner, admin**. Исключение: фильтр `?role=student` доступен
-по праву `students.write` (owner, admin, curator) — куратор ведёт учеников, но не видит персонал
-(ROL-7, ROL-12). Для расписания справочник преподавателей — отдельный эндпоинт ниже.
+Право: `members.list` — **все роли, кроме «ученика»** (owner, admin, curator, teacher, assistant)
+видят список сотрудников только для чтения (ROL-14). Исключение по фильтру: `?role=student`
+доступен по праву `students.write` (owner, admin, curator) — список учеников (ROL-7).
+Управление ролями — `members.write` (owner, admin), см. `PATCH /members`.
+
+`email` отдаётся только ролям с `members.write` (owner, admin); остальным — `null`
+(контакты видны всем, email — только управляющим, PRF-2, Q17).
+`avatarUrl` и `about` отдаются всем, у кого есть доступ к эндпоинту (Q17).
 
 ### GET /studios/{studioId}/teachers
 
@@ -200,7 +262,8 @@
 
 ```json
 {
-  "items": [ { "membershipId": "…", "displayName": "Анна Ковалёва" } ],
+  "items": [ { "membershipId": "…", "displayName": "Анна Ковалёва",
+               "avatarUrl": "/api/v1/avatars/u_8f3a.png", "about": "…" } ],
   "total": 1
 }
 ```
@@ -224,6 +287,7 @@
 | `409 ALREADY_MEMBER` | участник уже в студии (STF-3) |
 | `422 UNKNOWN_ROLE` | роль вне фиксированного набора |
 | `403 FORBIDDEN` | нет права `members.write` (сотрудники) или `students.write` (только `student`); `owner` в наборе ролей может указать только владелец |
+| `409 LAST_OWNER` | владелец пытается добавить участника с ролью `owner`: второй владелец невозможен, передача — через `owner-transfer` |
 
 Особый случай: `roles: ["student"]` требует права `students.write` и разрешает создать аккаунт,
 если его нет (STF-9) — в этом случае временный пароль возвращается в ответе (`temporaryPassword`),
@@ -241,12 +305,12 @@
 | Код | Когда |
 |---|---|
 | `422 UNKNOWN_ROLE` | роль вне набора |
-| `409 LAST_OWNER` | попытка снять роль `owner` с текущего владельца |
 | `403 FORBIDDEN` | администратор меняет набор ролей владельца, добавляет или убирает `owner`; участник меняет собственный набор ролей (ACC-9) |
 
 Передача владения через этот эндпоинт **не выполняется**: `owner` в наборе от администратора —
-403, смена владельца — только `POST /owner-transfer`. Попытка выдать второго `owner` не должна
-доходить до БД (частичный уникальный индекс) и не должна возвращать 500.
+403, смена владельца — только `POST /owner-transfer`. Снять `owner` с текущего владельца через
+`PATCH` нельзя: цель совпадает с членством запроса, поэтому раньше срабатывает 403 (ACC-9);
+удаление владельца из студии — `DELETE`, там `409 LAST_OWNER`.
 
 Себе роли не назначаются (ACC-9): `membershipId` из пути совпадает с членством запроса → 403.
 Роли владельца меняет только владелец, роли остальных — владелец или администратор.
@@ -279,6 +343,10 @@
 ```
 
 Право: `schedule.read` (просмотр доступен всем ролям студии).
+
+`weeklyLoadHours` — сумма длительностей активных (`scheduled`) сеансов зала в текущей неделе
+(пн–вс) в часовом поясе студии, в часах с точностью 0.01; `0`, если сеансов нет. Поле вычисляемое,
+в БД не хранится.
 
 ### POST /studios/{studioId}/rooms
 
@@ -317,7 +385,14 @@
 ```
 
 `teacherMembershipId` и `teacherName` — `null`, если преподаватель по умолчанию не задан (CLS-7).
-Право: `schedule.read`.
+
+`color` — цвет курса для блоков в календаре: одно из 12 значений `violet`, `indigo`, `blue`, `sky`,
+`teal`, `green`, `lime`, `amber`, `orange`, `red`, `rose`, `pink` (CLS-9). Обязателен в ответах,
+необязателен в запросах (по умолчанию `violet`); значение вне палитры → `422 VALIDATION`
+с `details.fields.color`. Свободный hex не поддерживается (Q12).
+
+`q` — регистронезависимый поиск подстроки по `name` и `direction`; пустой `q` равнозначен
+отсутствию фильтра. Комбинируется с `includeArchived`.
 
 ### POST /studios/{studioId}/courses
 
@@ -370,12 +445,13 @@
 }
 ```
 
-> Идентификатор сеанса — `sessionId`, как в `POST /sessions` и `POST …/cancel`. В реализации M5
-> поле называется `id`; при реализации 1.1.0 переименовать в ответе и в клиенте
-> (`ScheduleTab`, `types.ts`). Это единственное расхождение списка расписания с контрактом 1.0.0.
+> Идентификатор сеанса в списке расписания — `sessionId`, как в `POST /sessions` и `POST …/cancel`.
 
 Право: `schedule.read` — доступно всем шести ролям (SCH-7). Диапазон не больше 92 дней:
 `422 DATE_RANGE_TOO_LONG`.
+
+`from`/`to` — календарные даты в часовом поясе студии (`studios.timezone`), не в UTC: сеанс
+в 01:00 местного времени попадает в свою местную дату. Ответ отсортирован по `startsAt`.
 
 ### POST /studios/{studioId}/sessions
 
@@ -451,15 +527,19 @@
 
 `?futureOnly=true` (по умолчанию `true`) → `200` `{ "deleted": 8 }`.
 Удаляются только будущие сеансы серии, прошедшие сохраняются (SCH-8). Право: `schedule.write`.
+Несуществующая или чужая серия → `404 NOT_FOUND` (не `{ deleted: 0 }`).
 
 ## 8. Эндпоинт → право
 
 | Эндпоинт | Право |
 |---|---|
-| `GET /studios/{id}`, `/me` | `studio.read` |
+| `GET /studios/{id}` | `studio.read` |
+| `GET /me` | JWT, любая роль; студийный контекст не нужен (PRF-1) |
+| `PATCH /me`, `POST /me/password`, `POST/DELETE /me/avatar` | JWT, только свой аккаунт (PRF-1…PRF-12) |
+| `GET /avatars/{key}` | публично, без JWT (Q17) |
 | `PATCH /studios/{id}` | `studio.write` |
 | `POST /studios/{id}/archive` | `studio.archive` |
-| `GET /studios/{id}/members` | `members.read`; `?role=student` — `students.write` |
+| `GET /studios/{id}/members` | `members.list` (все, кроме `student`); `?role=student` — `students.write`; `PATCH/DELETE` — `members.write` |
 | `GET /studios/{id}/teachers` | `schedule.read` |
 | `POST/PATCH/DELETE /studios/{id}/members…` | `members.write` |
 | `POST …/members` с `roles:["student"]` | `students.write` |
@@ -477,7 +557,8 @@
 |---|---|---|
 | `VALIDATION` | 422 | не прошла валидация полей, `details.fields` |
 | `INVALID_CREDENTIALS` | 401 | неверная пара email/пароль |
-| `TOKEN_EXPIRED` | 401 | истёк JWT |
+| `TOKEN_EXPIRED` | 401 | истёк JWT; пока не возвращается — истёкший токен даёт `UNAUTHORIZED` |
+| `UNAUTHORIZED` | 401 | токена нет, он невалиден или пользователь деактивирован |
 | `NOT_A_MEMBER` | 403 | нет членства в студии из пути |
 | `FORBIDDEN` | 403 | членство есть, права нет |
 | `NOT_FOUND` | 404 | объект не найден или в другой студии |
@@ -503,6 +584,7 @@
 | `INVALID_REFERRAL` | 422 | недопустимый код реферальной ссылки |
 | `REFERRAL_TAKEN` | 409 | код занят другой студией |
 | `REFERRAL_NOT_FOUND` | 404 | код не найден |
+| `INTERNAL` | 500 | непредвиденная ошибка; тело без подробностей и без текста исключения |
 
 ## 10. Требует решения
 
@@ -513,7 +595,8 @@
 **Q3** (участие в нескольких студиях) на контракты не влияет: студия всегда в пути запроса.
 **Q8** (роль «родитель») добавит значение в `roles` и строку в матрицу прав.
 
-**Изменения 1.1.0** (§0) ждут реализации. До неё код расходится с этим документом: принимает
-`durationMin` в сеансах, не отдаёт `teacherMembershipId` у курсов, отдаёт список персонала куратору,
-называет идентификатор сеанса в списке расписания `id` вместо `sessionId`, разрешает менять
-собственный набор ролей.
+**Изменения 1.1.0** (§0) реализованы в M8 (T-37…T-43), код соответствует этому документу.
+
+**Открытые расхождения** (осознанно, вне M9): `TOKEN_EXPIRED` не возвращается — истёкший JWT даёт
+`UNAUTHORIZED`; `INVALID_TIMEZONE`/`INVALID_WORKING_HOURS` отдаются при создании и правке студии,
+но не при разборе часовых поясов внутри планирования.

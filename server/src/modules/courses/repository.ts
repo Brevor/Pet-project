@@ -1,6 +1,13 @@
 import type { Pool } from 'pg';
 import { AppError } from '../../errors';
 
+export const COURSE_COLORS = [
+  'violet', 'indigo', 'blue', 'sky', 'teal', 'green',
+  'lime', 'amber', 'orange', 'red', 'rose', 'pink'
+] as const;
+
+export type CourseColor = (typeof COURSE_COLORS)[number];
+
 export interface CourseRow {
   id: string;
   name: string;
@@ -9,6 +16,7 @@ export interface CourseRow {
   kind: string;
   defaultDurationMin: number;
   capacity: number;
+  color: string;
   teacherMembershipId: string | null;
   teacherName: string | null;
   archived: boolean;
@@ -22,6 +30,7 @@ interface CourseDbRow {
   kind: string;
   default_duration_min: number;
   capacity: number;
+  color: string;
   teacher_membership_id: string | null;
   teacher_name: string | null;
   archived_at: string | null;
@@ -35,6 +44,7 @@ const SELECT_COURSE = `
          c.kind,
          c.default_duration_min,
          c.capacity,
+         c.color,
          c.teacher_membership_id,
          coalesce(u.display_name, u.email) AS teacher_name,
          c.archived_at
@@ -52,6 +62,7 @@ function toCourse(row: CourseDbRow): CourseRow {
     kind: row.kind,
     defaultDurationMin: row.default_duration_min,
     capacity: row.capacity,
+    color: row.color,
     teacherMembershipId: row.teacher_membership_id,
     teacherName: row.teacher_name,
     archived: row.archived_at !== null
@@ -94,13 +105,17 @@ async function findCourse(pool: Pool, studioId: string, courseId: string): Promi
 export async function listCourses(
   pool: Pool,
   studioId: string,
-  includeArchived: boolean
+  includeArchived: boolean,
+  search?: string
 ): Promise<CourseRow[]> {
   const { rows } = await pool.query<CourseDbRow>(
     `${SELECT_COURSE}
       WHERE c.studio_id = $1 AND ($2::boolean OR c.archived_at IS NULL)
+        AND ($3::text IS NULL
+             OR c.name ILIKE '%' || $3 || '%'
+             OR COALESCE(c.direction, '') ILIKE '%' || $3 || '%')
       ORDER BY c.name`,
-    [studioId, includeArchived]
+    [studioId, includeArchived, search?.trim() || null]
   );
   return rows.map(toCourse);
 }
@@ -112,6 +127,7 @@ export interface CourseInput {
   kind: string;
   defaultDurationMin: number;
   capacity: number;
+  color?: string;
   teacherMembershipId?: string | null;
 }
 
@@ -126,8 +142,8 @@ export async function createCourse(
 
   try {
     const { rows } = await pool.query<{ id: string }>(
-      `INSERT INTO courses (studio_id, name, direction, level, kind, default_duration_min, capacity, teacher_membership_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO courses (studio_id, name, direction, level, kind, default_duration_min, capacity, color, teacher_membership_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id`,
       [
         studioId,
@@ -137,6 +153,7 @@ export async function createCourse(
         input.kind,
         input.defaultDurationMin,
         input.capacity,
+        input.color ?? 'violet',
         input.teacherMembershipId ?? null
       ]
     );
@@ -173,6 +190,7 @@ export async function updateCourse(
          kind = COALESCE($6, kind),
          default_duration_min = COALESCE($7, default_duration_min),
          capacity = COALESCE($8, capacity),
+         color = COALESCE($12, color),
          archived_at = CASE
            WHEN $9::boolean IS NULL THEN archived_at
            WHEN $9::boolean THEN COALESCE(archived_at, now())
@@ -195,7 +213,8 @@ export async function updateCourse(
         patch.capacity ?? null,
         patch.archived ?? null,
         hasTeacher,
-        patch.teacherMembershipId ?? null
+        patch.teacherMembershipId ?? null,
+        patch.color ?? null
       ]
     );
     const row = rows[0];

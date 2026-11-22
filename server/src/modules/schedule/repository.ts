@@ -266,6 +266,55 @@ function queryFailedWithOverlap(error: unknown): boolean {
   return (error as { code?: string }).code === '23P01';
 }
 
+function overlapCode(error: unknown): 'ROOM_CONFLICT' | 'TEACHER_CONFLICT' {
+  return (error as { constraint?: string }).constraint === 'no_teacher_overlap'
+    ? 'TEACHER_CONFLICT'
+    : 'ROOM_CONFLICT';
+}
+
+/** Гонка: ограничение БД сработало после предпроверки — восстанавливаем конфликт и его код. */
+async function rethrowOverlap(
+  pool: Pool,
+  error: unknown,
+  studioId: string,
+  roomId: string,
+  teacherMembershipId: string,
+  ranges: Array<{ startsAt: string; endsAt: string }>,
+  excludeId?: string
+): Promise<never> {
+  const code = overlapCode(error);
+  for (const range of ranges) {
+    const conflict = await findConflict(
+      pool,
+      studioId,
+      roomId,
+      teacherMembershipId,
+      range.startsAt,
+      range.endsAt,
+      excludeId
+    );
+    if (conflict) {
+      throw new AppError(
+        409,
+        code,
+        code === 'TEACHER_CONFLICT'
+          ? 'Преподаватель занят в это время'
+          : 'Зал занят в это время',
+        {
+          conflictingSessionId: conflict.id,
+          startsAt: conflict.starts_at.toISOString(),
+          endsAt: conflict.ends_at.toISOString()
+        }
+      );
+    }
+  }
+  throw new AppError(
+    409,
+    code,
+    code === 'TEACHER_CONFLICT' ? 'Преподаватель занят в это время' : 'Зал занят в это время'
+  );
+}
+
 export interface SingleSessionInput {
   courseId: string;
   roomId: string;
@@ -334,7 +383,9 @@ export async function createSingleSession(
     return { created: 1, seriesId: null, items: [{ sessionId: item.id, startsAt: item.startsAt, endsAt: item.endsAt }] };
   } catch (error) {
     if (queryFailedWithOverlap(error)) {
-      throw new AppError(409, 'ROOM_CONFLICT', 'Зал или преподаватель заняты в это время');
+      return await rethrowOverlap(pool, error, studioId, input.roomId, teacherMembershipId, [
+        { startsAt: input.startsAt, endsAt }
+      ]);
     }
     throw error;
   }
@@ -472,7 +523,14 @@ export async function createSeries(
   } catch (error) {
     await client.query('ROLLBACK');
     if (queryFailedWithOverlap(error)) {
-      throw new AppError(409, 'ROOM_CONFLICT', 'Зал или преподаватель заняты в это время');
+      return await rethrowOverlap(
+        pool,
+        error,
+        studioId,
+        input.roomId,
+        teacherMembershipId,
+        slots.map((slot) => ({ startsAt: slot.startsAt, endsAt: slot.endsAt }))
+      );
     }
     throw error;
   } finally {
@@ -505,8 +563,8 @@ export async function listSchedule(
   const { rows } = await pool.query<SessionDbRow>(
     `${SELECT_SESSION}
       WHERE s.studio_id = $1
-        AND s.starts_at >= $2::date
-        AND s.starts_at < ($3::date + interval '1 day')
+        AND s.starts_at >= (($2::date)::timestamp AT TIME ZONE (SELECT timezone FROM studios WHERE id = $1))
+        AND s.starts_at < ((($3::date + interval '1 day'))::timestamp AT TIME ZONE (SELECT timezone FROM studios WHERE id = $1))
         AND ($4::uuid IS NULL OR s.room_id = $4)
         AND ($5::uuid IS NULL OR s.teacher_membership_id = $5)
         AND ($6::uuid IS NULL OR s.course_id = $6)
@@ -560,7 +618,15 @@ export async function updateSession(
     );
   } catch (error) {
     if (queryFailedWithOverlap(error)) {
-      throw new AppError(409, 'ROOM_CONFLICT', 'Зал или преподаватель заняты в это время');
+      return await rethrowOverlap(
+        pool,
+        error,
+        studioId,
+        roomId,
+        teacherMembershipId,
+        [{ startsAt, endsAt }],
+        sessionId
+      );
     }
     throw error;
   }
@@ -602,6 +668,14 @@ export async function deleteSeries(
   seriesId: string,
   futureOnly: boolean
 ): Promise<number> {
+  const series = await pool.query(`SELECT 1 FROM class_series WHERE studio_id = $1 AND id = $2`, [
+    studioId,
+    seriesId
+  ]);
+  if (series.rowCount === 0) {
+    throw new AppError(404, 'NOT_FOUND', 'Серия не найдена');
+  }
+
   const result = await pool.query(
     `DELETE FROM class_sessions
       WHERE studio_id = $1 AND series_id = $2

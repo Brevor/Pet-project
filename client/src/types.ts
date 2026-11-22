@@ -22,8 +22,12 @@ export interface StudioView {
 
 export interface Member {
   membershipId: string;
-  email: string;
+  email: string | null;
   displayName: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  avatarUrl?: string | null;
+  about?: string | null;
   roles: string[];
   status: string;
 }
@@ -44,9 +48,29 @@ export interface Course {
   kind: string;
   defaultDurationMin: number;
   capacity: number;
+  color: string;
   teacherMembershipId: string | null;
   teacherName: string | null;
   archived: boolean;
+}
+
+export const COURSE_COLORS = [
+  { code: 'violet', label: 'Фиолетовый', hex: '#8b5cf6' },
+  { code: 'indigo', label: 'Индиго', hex: '#6366f1' },
+  { code: 'blue', label: 'Синий', hex: '#3b82f6' },
+  { code: 'sky', label: 'Голубой', hex: '#0ea5e9' },
+  { code: 'teal', label: 'Бирюзовый', hex: '#14b8a6' },
+  { code: 'green', label: 'Зелёный', hex: '#22c55e' },
+  { code: 'lime', label: 'Лаймовый', hex: '#84cc16' },
+  { code: 'amber', label: 'Янтарный', hex: '#f59e0b' },
+  { code: 'orange', label: 'Оранжевый', hex: '#f97316' },
+  { code: 'red', label: 'Красный', hex: '#ef4444' },
+  { code: 'rose', label: 'Розовый', hex: '#f43f5e' },
+  { code: 'pink', label: 'Малиновый', hex: '#ec4899' }
+] as const;
+
+export function courseColorHex(code: string | undefined): string {
+  return COURSE_COLORS.find((item) => item.code === code)?.hex ?? '#8b5cf6';
 }
 
 export interface Teacher {

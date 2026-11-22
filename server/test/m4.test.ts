@@ -104,6 +104,15 @@ test('залы: создание, дубль имени, валидация вм
     payload: { name: 'Зал Б', capacity: 0 }
   });
   assert.equal(invalid.statusCode, 422);
+
+  const listed = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/rooms`,
+    headers: auth(token)
+  });
+  assert.equal(listed.statusCode, 200);
+  assert.equal(listed.json().items.length, 1);
+  assert.equal(typeof listed.json().items[0].weeklyLoadHours, 'number');
 });
 
 test('залы: архивация и удаление свободного зала', { skip }, async () => {
@@ -187,6 +196,50 @@ test('курсы: создание, 141 символ отклоняется, д�
     payload: { ...payload, name: 'к'.repeat(140) }
   });
   assert.equal(longOk.statusCode, 201);
+
+  const found = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/courses?q=начин`,
+    headers: auth(token)
+  });
+  assert.equal(found.statusCode, 200);
+  assert.equal(found.json().items.length, 1);
+
+  const notFound = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/courses?q=jazz`,
+    headers: auth(token)
+  });
+  assert.equal(notFound.statusCode, 200);
+  assert.equal(notFound.json().items.length, 0);
+
+  const colored = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studioId}/courses`,
+    headers: auth(token),
+    payload: { ...payload, name: 'Salsa · вечер', color: 'pink' }
+  });
+  assert.equal(colored.statusCode, 201);
+  assert.equal(colored.json().course.color, 'pink');
+
+  const recolored = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${studioId}/courses/${colored.json().course.id}`,
+    headers: auth(token),
+    payload: { color: 'teal' }
+  });
+  assert.equal(recolored.statusCode, 200);
+  assert.equal(recolored.json().course.color, 'teal');
+
+  const badColor = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studioId}/courses`,
+    headers: auth(token),
+    payload: { ...payload, name: 'Bad color', color: '#ff00ff' }
+  });
+  assert.equal(badColor.statusCode, 422);
+  assert.equal(badColor.json().error.code, 'VALIDATION');
+  assert.ok(badColor.json().error.details.fields.color);
 });
 
 test('курс: преподаватель по умолчанию, teacherName и снятие через null', { skip }, async () => {

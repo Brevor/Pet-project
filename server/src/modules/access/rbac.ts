@@ -5,7 +5,7 @@ export type Action =
   | 'studio.read'
   | 'studio.write'
   | 'studio.archive'
-  | 'members.read'
+  | 'members.list'
   | 'members.write'
   | 'students.write'
   | 'rooms.write'
@@ -17,7 +17,7 @@ const PERMISSIONS: Record<Action, Role[]> = {
   'studio.read': ['owner', 'admin', 'curator', 'teacher', 'assistant', 'student'],
   'studio.write': ['owner', 'admin'],
   'studio.archive': ['owner'],
-  'members.read': ['owner', 'admin'],
+  'members.list': ['owner', 'admin', 'curator', 'teacher', 'assistant'],
   'members.write': ['owner', 'admin'],
   'students.write': ['owner', 'admin', 'curator'],
   'rooms.write': ['owner', 'admin', 'curator'],

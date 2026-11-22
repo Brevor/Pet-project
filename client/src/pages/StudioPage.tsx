@@ -120,10 +120,11 @@ export function StudioPage({ onLogout }: { onLogout: () => void }) {
   const canManageCourses = canManageStudents;
   const canManageRooms = canManageStudents;
   const canEditLink = canManageStaff;
+  const isStudentOnly = roles.every((role) => role === 'student');
   const visibleTabs = ALL_TABS.filter((item) => {
-    if (item.id === 'staff') return canManageStaff;
+    if (item.id === 'courses') return true;
+    if (item.id === 'staff') return !isStudentOnly;
     if (item.id === 'students') return canManageStudents;
-    if (item.id === 'courses') return canManageCourses;
     if (item.id === 'rooms') return canManageRooms;
     return true;
   });
@@ -214,10 +215,10 @@ export function StudioPage({ onLogout }: { onLogout: () => void }) {
         ))}
       </nav>
 
-      {tab === 'staff' && <StaffTab studioId={studioId} />}
-      {tab === 'students' && <StudentsTab studioId={studioId} />}
+      {tab === 'staff' && <StaffTab studioId={studioId} canManage={canManageStaff} />}
+      {tab === 'students' && <StudentsTab studioId={studioId} canExclude={canManageStaff} />}
       {tab === 'rooms' && <RoomsTab studioId={studioId} />}
-      {tab === 'courses' && <CoursesTab studioId={studioId} />}
+      {tab === 'courses' && <CoursesTab studioId={studioId} canManage={canManageCourses} />}
       {tab === 'schedule' && <ScheduleTab studioId={studioId} canManage={canManageSchedule} />}
     </div>
   );

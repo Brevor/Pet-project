@@ -43,7 +43,7 @@ export async function joinRoutes(
     if (!parsed.success) {
       return reply
         .code(422)
-        .send(errorBody('VALIDATION', 'Некорректные данные', fieldErrors(parsed.error)));
+        .send(errorBody('VALIDATION', 'Некорректные данные', { fields: fieldErrors(parsed.error) }));
     }
 
     const studio = await getStudioByCode(pool, code);

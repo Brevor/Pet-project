@@ -165,3 +165,152 @@ test('GET /me с испорченным токеном — 401', { skip }, async
   await app.close();
 });
 
+
+test('PATCH /me сохраняет профиль и запрещает email', { skip }, async () => {
+  const app = appWithDb();
+  const mail = email();
+  const registered = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/register',
+    payload: { email: mail, password: 'secret123' }
+  });
+  const token = registered.json().token;
+  const auth = { authorization: `Bearer ${token}` };
+
+  const saved = await app.inject({
+    method: 'PATCH',
+    url: '/api/v1/me',
+    headers: auth,
+    payload: {
+      firstName: 'Анна',
+      lastName: 'Ковалёва',
+      phone: '+7 (916) 123-45-67',
+      socialUrl: 'https://vk.com/anna',
+      messengerContact: '@anna',
+      about: 'Первая строка\nВторая строка'
+    }
+  });
+  assert.equal(saved.statusCode, 200, JSON.stringify(saved.json()));
+  assert.equal(saved.json().user.displayName, 'Анна Ковалёва');
+  assert.equal(saved.json().user.phone, '+7 (916) 123-45-67');
+  assert.equal(saved.json().user.about, 'Первая строка\nВторая строка');
+
+  const emptyName = await app.inject({
+    method: 'PATCH',
+    url: '/api/v1/me',
+    headers: auth,
+    payload: { firstName: '', lastName: 'Ковалёва' }
+  });
+  assert.equal(emptyName.statusCode, 422);
+  assert.ok(emptyName.json().error.details.fields.firstName);
+
+  const badPhone = await app.inject({
+    method: 'PATCH',
+    url: '/api/v1/me',
+    headers: auth,
+    payload: { firstName: 'Анна', lastName: 'Ковалёва', phone: 'abc' }
+  });
+  assert.equal(badPhone.statusCode, 422);
+  assert.ok(badPhone.json().error.details.fields.phone);
+
+  const emailAttempt = await app.inject({
+    method: 'PATCH',
+    url: '/api/v1/me',
+    headers: auth,
+    payload: { firstName: 'Анна', lastName: 'Ковалёва', email: 'other@example.com' }
+  });
+  assert.equal(emailAttempt.statusCode, 422);
+  assert.ok(emailAttempt.json().error.details.fields.email);
+
+  await app.close();
+});
+
+test('POST /me/password меняет пароль', { skip }, async () => {
+  const app = appWithDb();
+  const mail = email();
+  const registered = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/register',
+    payload: { email: mail, password: 'secret123' }
+  });
+  const token = registered.json().token;
+  const auth = { authorization: `Bearer ${token}` };
+
+  const wrong = await app.inject({
+    method: 'POST',
+    url: '/api/v1/me/password',
+    headers: auth,
+    payload: { currentPassword: 'nope', newPassword: 'secret1234' }
+  });
+  assert.equal(wrong.statusCode, 401);
+
+  const short = await app.inject({
+    method: 'POST',
+    url: '/api/v1/me/password',
+    headers: auth,
+    payload: { currentPassword: 'secret123', newPassword: 'short' }
+  });
+  assert.equal(short.statusCode, 422);
+
+  const changed = await app.inject({
+    method: 'POST',
+    url: '/api/v1/me/password',
+    headers: auth,
+    payload: { currentPassword: 'secret123', newPassword: 'secret1234' }
+  });
+  assert.equal(changed.statusCode, 204);
+
+  const relogin = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/login',
+    payload: { email: mail, password: 'secret1234' }
+  });
+  assert.equal(relogin.statusCode, 200);
+
+  await app.close();
+});
+
+test('аватар: загрузка, отдача и удаление', { skip }, async () => {
+  const app = appWithDb();
+  const mail = email();
+  const registered = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/register',
+    payload: { email: mail, password: 'secret123' }
+  });
+  const token = registered.json().token;
+  const auth = { authorization: `Bearer ${token}` };
+
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64'
+  );
+  const uploaded = await app.inject({
+    method: 'POST',
+    url: '/api/v1/me/avatar',
+    headers: { ...auth, 'content-type': 'image/png' },
+    payload: png
+  });
+  assert.equal(uploaded.statusCode, 200, JSON.stringify(uploaded.json()));
+  const avatarUrl = uploaded.json().user.avatarUrl as string;
+  assert.ok(avatarUrl.startsWith('/api/v1/avatars/'));
+
+  const served = await app.inject({ method: 'GET', url: avatarUrl });
+  assert.equal(served.statusCode, 200);
+  assert.equal(served.headers['content-type'], 'image/png');
+
+  const bad = await app.inject({
+    method: 'POST',
+    url: '/api/v1/me/avatar',
+    headers: { ...auth, 'content-type': 'application/pdf' },
+    payload: Buffer.from('%PDF-1.4')
+  });
+  assert.ok([415, 422].includes(bad.statusCode));
+
+  const removed = await app.inject({ method: 'DELETE', url: '/api/v1/me/avatar', headers: auth });
+  assert.equal(removed.statusCode, 204);
+  const gone = await app.inject({ method: 'GET', url: avatarUrl });
+  assert.equal(gone.statusCode, 404);
+
+  await app.close();
+});

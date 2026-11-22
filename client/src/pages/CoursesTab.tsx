@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import {
+  COURSE_COLORS,
   KIND_LABELS,
   LEVEL_LABELS,
+  courseColorHex,
   type Course,
   type Teacher
 } from '../types';
@@ -18,6 +20,7 @@ interface CourseForm {
   kind: string;
   duration: number;
   capacity: number;
+  color: string;
   teacherMembershipId: string;
 }
 
@@ -28,10 +31,11 @@ const emptyForm: CourseForm = {
   kind: 'group',
   duration: 90,
   capacity: 12,
+  color: 'violet',
   teacherMembershipId: ''
 };
 
-export function CoursesTab({ studioId }: { studioId: string }) {
+export function CoursesTab({ studioId, canManage }: { studioId: string; canManage: boolean }) {
   const [courses, setCourses] = useState<Course[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [form, setForm] = useState<CourseForm>(emptyForm);
@@ -71,6 +75,7 @@ export function CoursesTab({ studioId }: { studioId: string }) {
       kind: value.kind,
       defaultDurationMin: value.duration,
       capacity: value.capacity,
+      color: value.color,
       teacherMembershipId: value.teacherMembershipId || null
     };
   }
@@ -99,6 +104,7 @@ export function CoursesTab({ studioId }: { studioId: string }) {
       kind: course.kind,
       duration: course.defaultDurationMin,
       capacity: course.capacity,
+      color: course.color,
       teacherMembershipId: course.teacherMembershipId ?? ''
     });
     setError('');
@@ -147,8 +153,9 @@ export function CoursesTab({ studioId }: { studioId: string }) {
 
   return (
     <section className="space-y-4">
-      <form
-        onSubmit={createCourse}
+      {canManage && (
+        <form
+          onSubmit={createCourse}
         className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4"
       >
         <label className="min-w-[220px] flex-1 text-sm">
@@ -224,6 +231,20 @@ export function CoursesTab({ studioId }: { studioId: string }) {
           />
         </label>
         <label className="text-sm">
+          <span className="block text-slate-600">Цвет в календаре</span>
+          <select
+            value={form.color}
+            onChange={(event) => update({ color: event.target.value })}
+            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+          >
+            {COURSE_COLORS.map((item) => (
+              <option key={item.code} value={item.code}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
           <span className="block text-slate-600">Преподаватель</span>
           <select
             value={form.teacherMembershipId}
@@ -239,7 +260,8 @@ export function CoursesTab({ studioId }: { studioId: string }) {
         >
           Добавить курс
         </button>
-      </form>
+        </form>
+      )}
 
       {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
@@ -336,6 +358,20 @@ export function CoursesTab({ studioId }: { studioId: string }) {
                           />
                         </label>
                         <label className="text-sm">
+                          <span className="block text-slate-600">Цвет в календаре</span>
+                          <select
+                            value={editForm.color}
+                            onChange={(event) => updateEdit({ color: event.target.value })}
+                            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+                          >
+                            {COURSE_COLORS.map((item) => (
+                              <option key={item.code} value={item.code}>
+                                {item.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="text-sm">
                           <span className="block text-slate-600">Преподаватель</span>
                           <select
                             value={editForm.teacherMembershipId}
@@ -372,7 +408,14 @@ export function CoursesTab({ studioId }: { studioId: string }) {
               ) : (
                 <tr key={course.id} className="border-t border-slate-100">
                   <td className="px-4 py-2">
-                    <div className="font-medium">{course.name}</div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="h-3 w-3 shrink-0 rounded-full"
+                        style={{ backgroundColor: courseColorHex(course.color) }}
+                        title={course.color}
+                      />
+                      <span className="font-medium">{course.name}</span>
+                    </div>
                     <div className="text-xs text-slate-500">{course.direction ?? '—'}</div>
                   </td>
                   <td className="px-4 py-2 text-slate-600">{LEVEL_LABELS[course.level]}</td>
@@ -381,25 +424,29 @@ export function CoursesTab({ studioId }: { studioId: string }) {
                   <td className="px-4 py-2 text-slate-600">{course.capacity}</td>
                   <td className="px-4 py-2 text-slate-600">{course.teacherName ?? '—'}</td>
                   <td className="px-4 py-2 text-right">
-                    {course.archived && (
-                      <span className="mr-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600">
-                        архив
-                      </span>
+                    {canManage && (
+                      <>
+                        {course.archived && (
+                          <span className="mr-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600">
+                            архив
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => startEdit(course)}
+                          className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                        >
+                          Редактировать
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleArchive(course)}
+                          className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                        >
+                          {course.archived ? 'Вернуть' : 'В архив'}
+                        </button>
+                      </>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => startEdit(course)}
-                      className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
-                    >
-                      Редактировать
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleArchive(course)}
-                      className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
-                    >
-                      {course.archived ? 'Вернуть' : 'В архив'}
-                    </button>
                   </td>
                 </tr>
               )

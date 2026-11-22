@@ -5,7 +5,11 @@ export interface MemberRow {
   membershipId: string;
   userId: string;
   email: string;
-  displayName: string | null;
+  displayName: string;
+  firstName: string | null;
+  lastName: string | null;
+  avatarUrl: string | null;
+  about: string | null;
   roles: string[];
   status: string;
 }
@@ -15,16 +19,25 @@ interface MemberDbRow {
   user_id: string;
   email: string;
   display_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  avatar_key: string | null;
+  about: string | null;
   roles: string[];
   status: string;
 }
 
 function toMember(row: MemberDbRow): MemberRow {
+  const full = [row.first_name, row.last_name].filter((part) => part && part.length > 0).join(' ');
   return {
     membershipId: row.membership_id,
     userId: row.user_id,
     email: row.email,
-    displayName: row.display_name,
+    displayName: full.trim() || row.display_name || row.email,
+    firstName: row.first_name,
+    lastName: row.last_name,
+    avatarUrl: row.avatar_key ? `/api/v1/avatars/${row.avatar_key}` : null,
+    about: row.about,
     roles: row.roles,
     status: row.status
   };
@@ -40,6 +53,10 @@ export async function listMembers(
             u.id AS user_id,
             u.email,
             u.display_name,
+            u.first_name,
+            u.last_name,
+            u.avatar_key,
+            u.about,
             m.status,
             COALESCE(array_agg(mr.role ORDER BY mr.role) FILTER (WHERE mr.role IS NOT NULL), '{}') AS roles
        FROM memberships m
@@ -49,9 +66,11 @@ export async function listMembers(
         AND ($2::text IS NULL OR EXISTS (
               SELECT 1 FROM membership_roles r WHERE r.membership_id = m.id AND r.role = $2))
         AND ($3::text IS NULL OR u.email ILIKE '%' || $3 || '%'
-             OR coalesce(u.display_name, '') ILIKE '%' || $3 || '%')
-      GROUP BY m.id, u.id, u.email, u.display_name, m.status
-      ORDER BY coalesce(u.display_name, u.email)`,
+             OR coalesce(u.display_name, '') ILIKE '%' || $3 || '%'
+             OR coalesce(u.first_name, '') ILIKE '%' || $3 || '%'
+             OR coalesce(u.last_name, '') ILIKE '%' || $3 || '%')
+      GROUP BY m.id, u.id, u.email, u.display_name, u.first_name, u.last_name, u.avatar_key, u.about, m.status
+      ORDER BY coalesce(u.first_name, u.display_name, u.email)`,
     [studioId, filter.role ?? null, filter.q ?? null]
   );
 
@@ -68,12 +87,22 @@ export interface MembershipRecord {
 export interface TeacherRow {
   membershipId: string;
   displayName: string;
+  avatarUrl: string | null;
+  about: string | null;
 }
 
 export async function listTeachers(pool: Pool, studioId: string): Promise<TeacherRow[]> {
-  const { rows } = await pool.query<{ membership_id: string; display_name: string }>(
+  const { rows } = await pool.query<{
+    membership_id: string;
+    display_name: string;
+    avatar_key: string | null;
+    about: string | null;
+  }>(
     `SELECT m.id AS membership_id,
-            coalesce(u.display_name, u.email) AS display_name
+            coalesce(nullif(trim(concat_ws(' ', u.first_name, u.last_name)), ''),
+                     u.display_name, u.email) AS display_name,
+            u.avatar_key,
+            u.about
        FROM memberships m
        JOIN users u ON u.id = m.user_id
        JOIN membership_roles mr ON mr.membership_id = m.id AND mr.role = 'teacher'
@@ -83,7 +112,9 @@ export async function listTeachers(pool: Pool, studioId: string): Promise<Teache
   );
   return rows.map((row) => ({
     membershipId: row.membership_id,
-    displayName: row.display_name
+    displayName: row.display_name,
+    avatarUrl: row.avatar_key ? `/api/v1/avatars/${row.avatar_key}` : null,
+    about: row.about
   }));
 }
 

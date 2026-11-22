@@ -248,3 +248,71 @@ test('курс не может ссылаться на преподавател�
     );
   });
 });
+
+test('день недели серии ограничен 1–7 на уровне БД', { skip }, async () => {
+  await withTransaction(async (client) => {
+    const seed = await seedStudio(client);
+
+    await assert.rejects(
+      () =>
+        client.query(
+          `INSERT INTO class_series (studio_id, course_id, room_id, teacher_membership_id,
+                                     weekdays, start_time, duration_min, starts_on, until)
+           VALUES ($1, $2, $3, $4, ARRAY[0,1]::smallint[], '18:00', 90, '2027-01-04', '2027-01-11')`,
+          [seed.studioId, seed.courseId, seed.roomId, seed.teacherId]
+        ),
+      (error: { code?: string }) => error.code === '23514'
+    );
+  });
+
+  await withTransaction(async (client) => {
+    const seed = await seedStudio(client);
+
+    const ok = await client.query(
+      `INSERT INTO class_series (studio_id, course_id, room_id, teacher_membership_id,
+                                 weekdays, start_time, duration_min, starts_on, until)
+       VALUES ($1, $2, $3, $4, ARRAY[1,7]::smallint[], '18:00', 90, '2027-01-04', '2027-01-11')`,
+      [seed.studioId, seed.courseId, seed.roomId, seed.teacherId]
+    );
+    assert.equal(ok.rowCount, 1);
+  });
+});
+
+test('роль не может ссылаться на членство чужой студии', { skip }, async () => {
+  await withTransaction(async (client) => {
+    const first = await seedStudio(client);
+    const second = await seedStudio(client);
+
+    await assert.rejects(
+      () =>
+        client.query('INSERT INTO membership_roles (membership_id, studio_id, role) VALUES ($1, $2, $3)', [
+          first.teacherId,
+          second.studioId,
+          'assistant'
+        ]),
+      (error: { code?: string }) => error.code === '23503'
+    );
+  });
+});
+
+test('цвет курса: дефолт и CHECK по палитре', { skip }, async () => {
+  await withTransaction(async (client) => {
+    const seed = await seedStudio(client);
+
+    const defaults = await client.query<{ color: string }>(
+      'SELECT color FROM courses WHERE id = $1',
+      [seed.courseId]
+    );
+    assert.equal(defaults.rows[0]!.color, 'violet');
+
+    await assert.rejects(
+      () =>
+        client.query(
+          `INSERT INTO courses (studio_id, name, kind, default_duration_min, capacity, color)
+           VALUES ($1, 'Neon', 'group', 90, 10, 'chartreuse')`,
+          [seed.studioId]
+        ),
+      (error: { code?: string }) => error.code === '23514'
+    );
+  });
+});

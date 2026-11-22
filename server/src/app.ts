@@ -27,6 +27,12 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   app.register(jwt, { secret: options.jwtSecret ?? 'test-secret' });
 
+  for (const type of ['image/png', 'image/jpeg', 'image/webp']) {
+    app.addContentTypeParser(type, { parseAs: 'buffer' }, (_request, body, done) => {
+      done(null, body);
+    });
+  }
+
   app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       await request.jwtVerify();
@@ -68,6 +74,16 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         .status(error.statusCode)
         .send(errorBody(error.code, error.message, error.details));
     }
+
+    const status = (error as { statusCode?: number }).statusCode;
+    if (typeof status === 'number' && status >= 400 && status < 500) {
+      const message =
+        status === 400
+          ? 'Некорректное тело запроса: ожидается корректный JSON'
+          : (error as Error).message;
+      return reply.status(422).send(errorBody('VALIDATION', message, { fields: { body: message } }));
+    }
+
     return reply.status(500).send(errorBody('INTERNAL', 'Внутренняя ошибка сервера'));
   });
 

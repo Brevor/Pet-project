@@ -194,6 +194,10 @@ test('конфликт по залу и по преподавателю', { skip
   });
   assert.equal(roomConflict.statusCode, 409);
   assert.equal(roomConflict.json().error.code, 'ROOM_CONFLICT');
+  const roomDetails = roomConflict.json().error.details;
+  assert.ok(roomDetails.conflictingSessionId);
+  assert.ok(roomDetails.startsAt);
+  assert.ok(roomDetails.endsAt);
 
   const teacherConflict = await requireApp().inject({
     method: 'POST',
@@ -203,6 +207,7 @@ test('конфликт по залу и по преподавателю', { skip
   });
   assert.equal(teacherConflict.statusCode, 409);
   assert.equal(teacherConflict.json().error.code, 'TEACHER_CONFLICT');
+  assert.ok(teacherConflict.json().error.details.conflictingSessionId);
 });
 
 test('серия создаёт сеансы и отдаётся в расписании', { skip }, async () => {
@@ -244,6 +249,61 @@ test('серия создаёт сеансы и отдаётся в распис
   });
   assert.equal(deleted.statusCode, 200);
   assert.equal(deleted.json().deleted, 4);
+
+  const missing = await requireApp().inject({
+    method: 'DELETE',
+    url: `/api/v1/studios/${fixture.studioId}/series/${seriesId}`,
+    headers: auth(token)
+  });
+  assert.equal(missing.statusCode, 404);
+  assert.equal(missing.json().error.code, 'NOT_FOUND');
+});
+
+test('границы периода считаются в часовом поясе студии', { skip }, async () => {
+  const { fixture, token } = await setup();
+
+  const hours = [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({
+    weekday,
+    opensAt: '00:00',
+    closesAt: '23:59',
+    isClosed: false
+  }));
+  const patched = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${fixture.studioId}`,
+    headers: auth(token),
+    payload: { workingHours: hours }
+  });
+  assert.equal(patched.statusCode, 200, JSON.stringify(patched.json()));
+
+  const created = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${fixture.studioId}/sessions`,
+    headers: auth(token),
+    payload: {
+      courseId: fixture.courseId,
+      roomId: fixture.roomId,
+      teacherMembershipId: fixture.teacherId,
+      startsAt: '2027-02-02T01:00:00+03:00'
+    }
+  });
+  assert.equal(created.statusCode, 201, JSON.stringify(created.json()));
+
+  const sameDay = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${fixture.studioId}/schedule?from=2027-02-02&to=2027-02-02`,
+    headers: auth(token)
+  });
+  assert.equal(sameDay.statusCode, 200);
+  assert.equal(sameDay.json().items.length, 1);
+
+  const previousDay = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${fixture.studioId}/schedule?from=2027-02-01&to=2027-02-01`,
+    headers: auth(token)
+  });
+  assert.equal(previousDay.statusCode, 200);
+  assert.equal(previousDay.json().items.length, 0);
 });
 
 test('отменённый сеанс освобождает слот', { skip }, async () => {
@@ -301,6 +361,7 @@ test('зал с занятиями удалить нельзя', { skip }, async
 
   assert.equal(response.statusCode, 409);
   assert.equal(response.json().error.code, 'ROOM_IN_USE');
+  assert.equal(response.json().error.details.sessionCount, 1);
 });
 
 test('длительность берётся из курса, durationMin запрещён', { skip }, async () => {

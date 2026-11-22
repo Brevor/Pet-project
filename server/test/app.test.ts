@@ -38,3 +38,37 @@ test('AppError превращается в свой статус, код и deta
 
   await app.close();
 });
+
+test('битый JSON — 422 VALIDATION с details.fields, а не 500', async () => {
+  const app = buildApp();
+  app.post('/echo', async (request) => ({ body: request.body }));
+
+  const response = await app.inject({
+    method: 'POST',
+    url: '/echo',
+    headers: { 'content-type': 'application/json' },
+    payload: '{"name": '
+  });
+
+  assert.equal(response.statusCode, 422);
+  assert.equal(response.json().error.code, 'VALIDATION');
+  assert.ok(response.json().error.details.fields.body);
+
+  await app.close();
+});
+
+test('неожиданная ошибка — 500 INTERNAL без подробностей', async () => {
+  const app = buildApp();
+  app.get('/crash', async () => {
+    throw new Error('пароль admin123 в тексте ошибки');
+  });
+
+  const response = await app.inject({ method: 'GET', url: '/crash' });
+
+  assert.equal(response.statusCode, 500);
+  assert.deepEqual(response.json(), {
+    error: { code: 'INTERNAL', message: 'Внутренняя ошибка сервера' }
+  });
+
+  await app.close();
+});
