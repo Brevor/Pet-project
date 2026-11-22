@@ -65,6 +65,6 @@ curl http://localhost:8080/health
 |---|---|
 | `Cannot connect to the Docker daemon` | не запущен Docker Desktop |
 | `port is already allocated` на 8080 | занят порт — освободить или поменять `ports` в `docker-compose.yml` |
-| `db` unhealthy | `.env` с невалидным паролем или остался старый volume: `docker compose down -v` и заново |
+| `db` unhealthy / `Restarting` | том должен быть смонтирован в `/var/lib/postgresql` (требование образа 18+); старый volume — `docker compose down -v` и заново |
 | `api` падает на миграциях | смотреть `docker compose logs api`; частая причина — нет `btree_gist` (в образе postgres contrib есть) |
 | `entrypoint.sh: not found` | сработало CRLF-преобразование; в Dockerfile есть `sed`, но проверьте `.gitattributes` |
