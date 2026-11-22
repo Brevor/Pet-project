@@ -1,28 +1,26 @@
-// Headless-проверка логики прототипа: DOM-заглушка + vm
+// Headless-проверка прототипа: DOM-заглушка + vm, модель берётся из app.js
 import fs from 'node:fs';
 import vm from 'node:vm';
 
 const html = fs.readFileSync(new URL('./index.html', import.meta.url), 'utf8');
-const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
+const script = fs.readFileSync(new URL('./app.js', import.meta.url), 'utf8');
 
 const idx = script.lastIndexOf('})();');
-if (idx < 0) throw new Error('не найден конец IIFE');
+if (idx < 0) throw new Error('не найден конец IIFE в app.js');
 const instrumented = script.slice(0, idx) +
-  'globalThis.__t = { db, weekOccurrences, findConflicts, capacityWarning, occursOn, ' +
-  'dateKey, startOfWeek, addDays, parseKey, DAY_START, DAY_END, titleOf, roomById };\n})();';
+  'globalThis.__t = { db, can, weekOccurrences, findConflicts, workingHoursError, capacityWarning, ' +
+  'addMember, updateMemberRoles, transferOwnership, deactivateMember, validateCourse, ' +
+  'dateKey, startOfWeek, addDays, parseKey, memberById, courseById, roomById };\n})();';
 
-const mkEl = () => {
-  const el = {
-    innerHTML: '', textContent: '', value: '', hidden: false, dataset: {},
-    style: {},
-    classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
-    addEventListener() {}, focus() {}, reset() {},
-    querySelector() { return mkEl(); },
-    querySelectorAll() { return []; },
-    getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0 }; }
-  };
-  return el;
-};
+const mkEl = () => ({
+  innerHTML: '', textContent: '', value: '', hidden: false, disabled: false, readOnly: false,
+  dataset: {}, style: {},
+  classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
+  addEventListener() {}, focus() {}, reset() {},
+  querySelector() { return mkEl(); },
+  querySelectorAll() { return []; },
+  getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0 }; }
+});
 
 const cache = new Map();
 const sandbox = {
@@ -32,12 +30,11 @@ const sandbox = {
   confirm: () => true,
   localStorage: (() => {
     const m = new Map();
-    return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) };
+    return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) };
   })(),
   document: {
     querySelector: sel => { if (!cache.has(sel)) cache.set(sel, mkEl()); return cache.get(sel); },
     querySelectorAll: () => [],
-    createElement: () => mkEl(),
     addEventListener: () => {}
   }
 };
@@ -54,7 +51,7 @@ const ok = (name, cond, extra = '') => {
   if (!cond) fails++;
 };
 
-/* 0. статические проверки разметки */
+/* ---------- 0. разметка ---------- */
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]);
 const dup = [...new Set(ids.filter((v, i) => ids.indexOf(v) !== i))];
 ok('нет дубликатов id', dup.length === 0, dup.join(', '));
@@ -63,82 +60,92 @@ const refs = [...new Set([...script.matchAll(/qs\('(#[A-Za-z0-9_-]+)/g)].map(m =
 const missing = refs.filter(id => !ids.includes(id));
 ok('все qs("#…") ссылаются на существующие id', missing.length === 0, missing.join(', '));
 
-/* 1. неделя: 15 еженедельных + 1 разовое = 16 */
-const occ = t.weekOccurrences();
-ok('16 занятий в текущей неделе', occ.length === 16, 'получено ' + occ.length);
+const api = [...script.matchAll(/\/api\/v1/g)].length;
+ok('прототип без обращений к API', api === 0);
+
+/* ---------- 1. модель и неделя ---------- */
+ok('9 еженедельных + 1 разовый сеанс = 10 вхождений',
+  t.weekOccurrences().length === 10, 'получено ' + t.weekOccurrences().length);
 
 const byDay = [0, 0, 0, 0, 0, 0, 0];
-occ.forEach(o => byDay[o.i]++);
-ok('распределение по дням 3/2/2/2/2/4/1',
-  byDay.join(',') === '3,2,2,2,2,4,1', byDay.join(','));
+t.weekOccurrences().forEach(o => byDay[o.i]++);
+ok('распределение 2/1/2/1/1/3/0', byDay.join(',') === '2,1,2,1,1,3,0', byDay.join(','));
 
-/* 2. конфликт по залу и преподавателю */
-const base = { id: 'test-1', kind: 'group', groupId: 'g1', teacherId: 't1', roomId: 'r1',
-  repeat: 'weekly', weekday: 0, date: null, start: 1080, duration: 90, until: null };
+/* ---------- 2. конфликты ---------- */
+const base = { id: 'x1', courseId: 'c1', roomId: 'r1', memberId: 'm1', repeat: 'weekly', weekday: 0, date: null, start: 1080, duration: 90, until: null };
 const c1 = t.findConflicts(base, null);
-ok('конфликт: занято и зал, и преподаватель', c1.length >= 2, JSON.stringify(c1));
-ok('сообщение про Зал А', c1.some(m => m.includes('Зал А')), JSON.stringify(c1));
-ok('сообщение про Анну', c1.some(m => m.includes('Анна')), JSON.stringify(c1));
+ok('конфликт по залу и преподавателю найден', c1.length === 2, JSON.stringify(c1));
+ok('сообщение про Зал А', c1.some(m => m.includes('Зал А')));
+ok('сообщение про Анну', c1.some(m => m.includes('Анна')));
 
-/* 3. свободный слот — конфликтов нет */
-const free = { ...base, id: 'test-2', roomId: 'r2', teacherId: 't4', weekday: 2, start: 700, duration: 60 };
-ok('свободный слот без конфликтов', t.findConflicts(free, null).length === 0,
-  JSON.stringify(t.findConflicts(free, null)));
+const free = { ...base, id: 'x2', roomId: 'r3', memberId: 'm4', weekday: 1, start: 600 };
+ok('свободный слот без конфликтов', t.findConflicts(free, null).length === 0);
 
-/* 4. занят только преподаватель */
-const teacherBusy = { ...base, id: 'test-3', roomId: 'r1', teacherId: 't2', weekday: 1, start: 1170, duration: 60 };
-const c4 = t.findConflicts(teacherBusy, null);
-ok('конфликт только по преподавателю', c4.length === 1 && c4[0].includes('Мария'), JSON.stringify(c4));
+ok('правка сеанса не конфликтует сама с собой', t.findConflicts({ ...base, id: 's02' }, 's02').length === 0);
 
-/* 5. редактирование самого себя не даёт конфликтов */
-ok('правка занятия не конфликтует сама с собой',
-  t.findConflicts({ ...base, id: 'c02' }, 'c02').length === 0);
-
-/* 6. разовое занятие попадает на понедельник этой недели */
+/* ---------- 3. рабочие часы ---------- */
+const sunday = { ...base, id: 'x3', repeat: 'once', weekday: null, date: null };
 const ws = t.startOfWeek(new Date());
-const monday = t.addDays(ws, 0);
-const once = { ...base, id: 'test-4', repeat: 'once', weekday: null,
-  teacherId: 't4', roomId: 'r2', date: t.dateKey(monday), start: 600, duration: 60 };
-const c6 = t.findConflicts(once, null);
-ok('разовое в понедельник 10:00 конфликтует со Stretching',
-  c6.length >= 1 && c6.some(m => m.includes('Stretching')), JSON.stringify(c6));
+sunday.date = t.dateKey(t.addDays(ws, 6));
+ok('воскресенье закрыто', t.workingHoursError(sunday).includes('не работает'), t.workingHoursError(sunday));
 
-/* 7. разовое в другой день — без конфликта */
-const onceFree = { ...once, id: 'test-5', date: t.dateKey(t.addDays(ws, 2)), start: 600 };
-ok('разовое в среду 10:00 свободно', t.findConflicts(onceFree, null).length === 0,
-  JSON.stringify(t.findConflicts(onceFree, null)));
+const late = { ...base, id: 'x4', weekday: 0, start: 21 * 60, duration: 90 };
+ok('сеанс вне рабочих часов отклоняется', t.workingHoursError(late).length > 0, t.workingHoursError(late));
 
-/* 8. предупреждение о вместимости */
-ok('вместимость: 22 ученика в зал на 14',
-  t.capacityWarning({ kind: 'group', groupId: 'g7', roomId: 'r2', teacherId: 't1', start: 600, duration: 60 })
-    .includes('больше вместимости'));
-ok('вместимость: инд. занятие не проверяется',
-  t.capacityWarning({ kind: 'individual', student: 'X', roomId: 'r2', teacherId: 't1', start: 600, duration: 60 }) === '');
+const inside = { ...base, id: 'x5', weekday: 0, start: 18 * 60, duration: 90 };
+ok('сеанс внутри рабочих часов допустим', t.workingHoursError(inside) === '');
 
-/* 9. повторяемость по дням */
-ok('c01 идёт только по понедельникам',
-  t.occursOn(t.db.classes.find(c => c.id === 'c01'), t.addDays(ws, 0), 0) === true &&
-  t.occursOn(t.db.classes.find(c => c.id === 'c01'), t.addDays(ws, 1), 1) === false);
+/* ---------- 4. вместимость ---------- */
+ok('курс на 22 в зал на 14 — предупреждение',
+  t.capacityWarning({ courseId: 'c5', roomId: 'r2' }).includes('больше вместимости'));
+ok('курс на 10 в зал на 25 — без предупреждения',
+  t.capacityWarning({ courseId: 'c3', roomId: 'r1' }) === '');
 
-/* 10. серия с датой окончания */
-const until = t.dateKey(t.addDays(ws, 30));
-const limited = { ...base, id: 'test-6', weekday: 0, start: 600, roomId: 'r3', teacherId: 't3', until };
-const perDay = [];
-t.db.classes.push(limited);
-const occ2 = t.weekOccurrences().filter(o => o.c.id === 'test-6');
-t.db.classes = t.db.classes.filter(c => c.id !== 'test-6');
-ok('серия с until=+30 дней видна на текущей неделе', occ2.length === 1, 'вхождений: ' + occ2.length);
-ok('серия с until в прошлом не отображается',
-  (() => {
-    const past = { ...limited, id: 'test-7', until: t.dateKey(t.addDays(ws, -10)) };
-    t.db.classes.push(past);
-    const n = t.weekOccurrences().filter(o => o.c.id === 'test-7').length;
-    t.db.classes = t.db.classes.filter(c => c.id !== 'test-7');
-    return n === 0;
-  })());
+/* ---------- 5. RBAC ---------- */
+const setMe = id => { t.db.me = id; };
+setMe('m4');
+ok('преподаватель не управляет расписанием', t.can('schedule.write') === false);
+setMe('m3');
+ok('куратор управляет расписанием', t.can('schedule.write') === true);
+ok('куратор не управляет персоналом', t.can('members.write') === false);
+setMe('m2');
+ok('администратор управляет персоналом', t.can('members.write') === true);
+setMe('m6');
+ok('ученик только смотрит', t.can('schedule.write') === false && t.can('courses.write') === false);
+setMe('m1');
+ok('владелец может всё', t.can('studio.archive') && t.can('schedule.write') && t.can('members.write'));
 
-/* 11. занятие за пределами рабочего дня отсекается валидацией (проверяем границы констант) */
-ok('рабочий день 09:00–22:00', t.DAY_START === 540 && t.DAY_END === 1320);
+/* ---------- 6. участники ---------- */
+ok('неизвестный email отклоняется', t.addMember('nobody@example.com', ['teacher']).ok === false);
+ok('участник добавляется по email из справочника', t.addMember('petr@studio.ru', ['teacher']).ok === true);
+ok('в студии 7 участников', t.db.members.length === 7, 'участников: ' + t.db.members.length);
+ok('повторное добавление отклоняется', t.addMember('petr@studio.ru', ['teacher']).ok === false);
+
+const petr = t.db.members.find(m => m.email === 'petr@studio.ru');
+ok('пустой набор ролей отклоняется', t.updateMemberRoles(petr.id, []).ok === false);
+ok('несколько ролей назначаются', t.updateMemberRoles(petr.id, ['teacher', 'assistant']).ok === true && petr.roles.length === 2);
+
+/* ---------- 7. владелец ---------- */
+ok('передача владения работает', t.transferOwnership(petr.id).ok === true);
+const owners = t.db.members.filter(m => m.roles.includes('owner'));
+ok('владелец ровно один', owners.length === 1 && owners[0].id === petr.id);
+const anna = t.memberById('m1');
+ok('прежний владелец стал администратором', !anna.roles.includes('owner') && anna.roles.includes('admin'), JSON.stringify(anna.roles));
+ok('повторная передача тому же участнику отклоняется', t.transferOwnership(petr.id).ok === false);
+ok('владельца нельзя деактивировать', t.deactivateMember(petr.id).ok === false);
+ok('ассистента деактивировать можно', t.deactivateMember('m5').ok === true && t.memberById('m5').status === 'disabled');
+
+/* ---------- 8. курсы ---------- */
+ok('курс 140 символов проходит', t.validateCourse('к'.repeat(140), 10).length === 0);
+ok('курс 141 символ отклоняется', t.validateCourse('к'.repeat(141), 10).length > 0);
+ok('дубль названия отклоняется', t.validateCourse('Stretching', 10).length > 0);
+ok('нулевая вместимость отклоняется', t.validateCourse('Новый курс', 0).length > 0);
+
+/* ---------- 9. данные не выходят за пределы модели ---------- */
+ok('у каждого сеанса есть курс и зал',
+  t.db.sessions.every(s => t.courseById(s.courseId) && t.roomById(s.roomId)));
+ok('у каждого сеанса преподаватель с ролью teacher',
+  t.db.sessions.every(s => (t.memberById(s.memberId) || { roles: [] }).roles.includes('teacher')));
 
 console.log('\n' + (fails ? fails + ' проверок провалено' : 'все проверки пройдены'));
 process.exit(fails ? 1 : 0);
