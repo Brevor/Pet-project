@@ -3,7 +3,10 @@ import jwt from '@fastify/jwt';
 import type { Pool } from 'pg';
 import { AppError, errorBody } from './errors';
 import { authRoutes } from './modules/auth/routes';
+import { coursesRoutes } from './modules/courses/routes';
 import { membersRoutes } from './modules/members/routes';
+import { roomsRoutes } from './modules/rooms/routes';
+import { scheduleRoutes } from './modules/schedule/routes';
 import { studiosRoutes } from './modules/studios/routes';
 
 declare module 'fastify' {
@@ -42,6 +45,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     });
     app.register(studiosRoutes, { prefix, pool: options.pool });
     app.register(membersRoutes, { prefix, pool: options.pool });
+    app.register(roomsRoutes, { prefix, pool: options.pool });
+    app.register(coursesRoutes, { prefix, pool: options.pool });
+    app.register(scheduleRoutes, { prefix, pool: options.pool });
   }
 
   app.setNotFoundHandler(async (request, reply) =>
@@ -61,5 +67,6 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   return app;
 }
+
 
 
