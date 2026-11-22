@@ -8,11 +8,12 @@ import {
   type WorkingHour
 } from '../types';
 import { CoursesTab } from './CoursesTab';
+import { OnboardingPage } from './OnboardingPage';
 import { RoomsTab } from './RoomsTab';
 import { ScheduleTab } from './ScheduleTab';
 import { StaffTab } from './StaffTab';
 
-type Tab = 'staff' | 'rooms' | 'courses' | 'schedule';
+type Tab = 'schedule' | 'courses' | 'rooms' | 'staff';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'schedule', label: 'Расписание' },
@@ -35,10 +36,9 @@ export function StudioPage({ onLogout }: { onLogout: () => void }) {
   const [error, setError] = useState('');
   const [studio, setStudio] = useState<StudioView | null>(null);
   const [tab, setTab] = useState<Tab>('schedule');
-
-  const [name, setName] = useState('');
-  const [timezone, setTimezone] = useState('Europe/Moscow');
-  const [creating, setCreating] = useState(false);
+  const [linkInput, setLinkInput] = useState('');
+  const [savingLink, setSavingLink] = useState(false);
+  const [linkNotice, setLinkNotice] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,6 +52,7 @@ export function StudioPage({ onLogout }: { onLogout: () => void }) {
       }
       const view = await api<StudioView>(`/studios/${first.studioId}`);
       setStudio(view);
+      setLinkInput(view.referralCode);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Не удалось загрузить студию');
     } finally {
@@ -63,18 +64,33 @@ export function StudioPage({ onLogout }: { onLogout: () => void }) {
     void load();
   }, [load]);
 
-  async function createStudio(event: React.FormEvent) {
+  async function saveLink(event: React.FormEvent) {
     event.preventDefault();
-    setCreating(true);
-    setError('');
+    if (!studio) return;
+    setSavingLink(true);
+    setLinkNotice('');
     try {
-      await api('/studios', { method: 'POST', body: JSON.stringify({ name, timezone }) });
-      setName('');
+      await api(`/studios/${studio.studio.id}/referral`, {
+        method: 'PATCH',
+        body: JSON.stringify({ code: linkInput })
+      });
       await load();
+      setLinkNotice('Ссылка обновлена, старый адрес больше не работает');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Не удалось создать студию');
+      setLinkNotice(cause instanceof Error ? cause.message : 'Не удалось изменить ссылку');
     } finally {
-      setCreating(false);
+      setSavingLink(false);
+    }
+  }
+
+  async function copyLink() {
+    if (!studio) return;
+    const url = `${window.location.origin}${studio.referralUrl}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkNotice('Ссылка скопирована');
+    } catch {
+      setLinkNotice(url);
     }
   }
 
@@ -82,55 +98,21 @@ export function StudioPage({ onLogout }: { onLogout: () => void }) {
     return <p className="text-sm text-slate-500">Загрузка…</p>;
   }
 
+  if (error) {
+    return <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>;
+  }
+
   if (!studio) {
     return (
-      <section className="mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-6">
-        <h2 className="text-base font-semibold">Создайте студию</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Вы станете владельцем: появятся рабочие часы, персонал и расписание.
-        </p>
-
-        <form onSubmit={createStudio} className="mt-4 space-y-3">
-          <label className="block text-sm">
-            <span className="text-slate-600">Название</span>
-            <input
-              required
-              minLength={2}
-              maxLength={60}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-violet-500"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="text-slate-600">Часовой пояс</span>
-            <select
-              value={timezone}
-              onChange={(event) => setTimezone(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-            >
-              <option value="Europe/Moscow">Europe/Moscow</option>
-              <option value="Europe/Kaliningrad">Europe/Kaliningrad</option>
-              <option value="Asia/Yekaterinburg">Asia/Yekaterinburg</option>
-              <option value="Asia/Novosibirsk">Asia/Novosibirsk</option>
-            </select>
-          </label>
-
-          {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
-
-          <button
-            type="submit"
-            disabled={creating}
-            className="w-full rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
-          >
-            {creating ? 'Создаём…' : 'Создать студию'}
-          </button>
-        </form>
-      </section>
+      <div className="space-y-4">
+        <OnboardingPage onChanged={() => void load()} />
+      </div>
     );
   }
 
   const studioId = studio.studio.id;
+  const canEditLink = studio.myRoles.some((role) => role === 'owner' || role === 'admin');
+  const referralUrl = `${window.location.origin}${studio.referralUrl}`;
 
   return (
     <div className="space-y-5">
@@ -159,6 +141,44 @@ export function StudioPage({ onLogout }: { onLogout: () => void }) {
           >
             Выйти
           </button>
+        </div>
+
+        <div className="mt-4 rounded-lg bg-slate-50 p-4">
+          <h3 className="text-sm font-semibold">Ссылка для учеников</h3>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <code className="flex-1 overflow-x-auto rounded bg-white px-3 py-2 text-xs text-slate-700">
+              {referralUrl}
+            </code>
+            <button
+              type="button"
+              onClick={copyLink}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-white"
+            >
+              Скопировать
+            </button>
+          </div>
+
+          {canEditLink && (
+            <form onSubmit={saveLink} className="mt-3 flex flex-wrap items-end gap-2">
+              <label className="text-xs">
+                <span className="block text-slate-500">Код ссылки</span>
+                <input
+                  value={linkInput}
+                  onChange={(event) => setLinkInput(event.target.value)}
+                  className="mt-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={savingLink}
+                className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+              >
+                {savingLink ? 'Сохраняем…' : 'Сохранить'}
+              </button>
+            </form>
+          )}
+
+          {linkNotice && <p className="mt-2 text-xs text-slate-600">{linkNotice}</p>}
         </div>
       </section>
 

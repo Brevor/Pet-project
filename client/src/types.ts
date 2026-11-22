@@ -16,6 +16,8 @@ export interface StudioView {
   studio: { id: string; name: string; timezone: string };
   workingHours: WorkingHour[];
   myRoles: string[];
+  referralCode: string;
+  referralUrl: string;
 }
 
 export interface Member {
