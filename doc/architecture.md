@@ -1,10 +1,10 @@
 # Архитектура: модуль «ядро студии»
 
-> **Версия:** 1.3.0
+> **Версия:** 1.3.1
 > **Дата:** 2026-11-22
 > **Роль:** Architect
 > **Основание:** `doc/requirements/studio.md` (Status: approved, v0.4.0), `doc/proposal.md`
-> **Связанные:** `doc/contracts.md` (v1.3.0)
+> **Связанные:** `doc/contracts.md` (v1.3.1)
 
 > **Индекс разделов:**
 > - §1 Вердикт анализа
@@ -142,6 +142,10 @@ PK `(membership_id, role)`; **частичный UNIQUE `(studio_id) WHERE role 
 `id uuid PK`, `studio_id`, `name text NOT NULL`, `capacity int NOT NULL CHECK (capacity > 0)`,
 `description text`, `archived_at timestamptz`, `created_at`;
 UNIQUE `(studio_id, lower(name))` — ROM-2; индекс `(studio_id)`.
+
+`weeklyLoadHours` — вычисляемое поле ответа `GET /rooms` (не колонка): сумма длительностей
+`status = 'scheduled'` сеансов зала в текущей календарной неделе (пн–вс) в часовом поясе студии;
+часы не округляются до целых (точность 0.01).
 
 ### 5.7. `courses`
 
@@ -296,6 +300,10 @@ SMTP в Фазе 1 нет, пароль передаётся ученику ли
   (`(starts_on + start_time) AT TIME ZONE studios.timezone`), поэтому переход на летнее время
   не сдвигает сеансы.
 - Клиент отображает время в поясе студии, а не браузера.
+- Границы периода в `GET /schedule` (`from`/`to`) — календарные даты в часовом поясе студии:
+  сеанс, начинающийся в 01:00 по местному времени, относится к своей местной дате, а не к
+  предыдущей по UTC. Лимит 92 дня считается по этим же датам. Так же считается неделя для
+  `weeklyLoadHours` в `GET /rooms`.
 
 ## 8. Авторизация и права
 
