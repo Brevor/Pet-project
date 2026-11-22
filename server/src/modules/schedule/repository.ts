@@ -563,8 +563,8 @@ export async function listSchedule(
   const { rows } = await pool.query<SessionDbRow>(
     `${SELECT_SESSION}
       WHERE s.studio_id = $1
-        AND s.starts_at >= $2::date
-        AND s.starts_at < ($3::date + interval '1 day')
+        AND s.starts_at >= (($2::date)::timestamp AT TIME ZONE (SELECT timezone FROM studios WHERE id = $1))
+        AND s.starts_at < ((($3::date + interval '1 day'))::timestamp AT TIME ZONE (SELECT timezone FROM studios WHERE id = $1))
         AND ($4::uuid IS NULL OR s.room_id = $4)
         AND ($5::uuid IS NULL OR s.teacher_membership_id = $5)
         AND ($6::uuid IS NULL OR s.course_id = $6)
@@ -668,6 +668,14 @@ export async function deleteSeries(
   seriesId: string,
   futureOnly: boolean
 ): Promise<number> {
+  const series = await pool.query(`SELECT 1 FROM class_series WHERE studio_id = $1 AND id = $2`, [
+    studioId,
+    seriesId
+  ]);
+  if (series.rowCount === 0) {
+    throw new AppError(404, 'NOT_FOUND', 'Серия не найдена');
+  }
+
   const result = await pool.query(
     `DELETE FROM class_sessions
       WHERE studio_id = $1 AND series_id = $2

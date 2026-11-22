@@ -7,6 +7,7 @@ export interface RoomRow {
   capacity: number;
   description: string | null;
   archived: boolean;
+  weeklyLoadHours: number;
 }
 
 interface RoomDbRow {
@@ -15,6 +16,7 @@ interface RoomDbRow {
   capacity: number;
   description: string | null;
   archived_at: string | null;
+  weekly_load_hours: number;
 }
 
 function toRoom(row: RoomDbRow): RoomRow {
@@ -23,7 +25,8 @@ function toRoom(row: RoomDbRow): RoomRow {
     name: row.name,
     capacity: row.capacity,
     description: row.description,
-    archived: row.archived_at !== null
+    archived: row.archived_at !== null,
+    weeklyLoadHours: Number(row.weekly_load_hours)
   };
 }
 
@@ -33,10 +36,27 @@ export async function listRooms(
   includeArchived: boolean
 ): Promise<RoomRow[]> {
   const { rows } = await pool.query<RoomDbRow>(
-    `SELECT id, name, capacity, description, archived_at
-       FROM rooms
-      WHERE studio_id = $1 AND ($2::boolean OR archived_at IS NULL)
-      ORDER BY name`,
+    `WITH bounds AS (
+       SELECT (date_trunc('week', now() AT TIME ZONE s0.timezone) AT TIME ZONE s0.timezone) AS week_start
+         FROM studios s0
+        WHERE s0.id = $1
+     )
+     SELECT r.id, r.name, r.capacity, r.description, r.archived_at,
+            COALESCE(
+              ROUND(SUM(EXTRACT(EPOCH FROM (sess.ends_at - sess.starts_at))) / 3600.0, 2),
+              0
+            )::float8 AS weekly_load_hours
+       FROM rooms r
+       CROSS JOIN bounds b
+       LEFT JOIN class_sessions sess
+         ON sess.studio_id = r.studio_id
+        AND sess.room_id = r.id
+        AND sess.status = 'scheduled'
+        AND sess.starts_at >= b.week_start
+        AND sess.starts_at < b.week_start + interval '7 days'
+      WHERE r.studio_id = $1 AND ($2::boolean OR r.archived_at IS NULL)
+      GROUP BY r.id, r.name, r.capacity, r.description, r.archived_at
+      ORDER BY r.name`,
     [studioId, includeArchived]
   );
   return rows.map(toRoom);

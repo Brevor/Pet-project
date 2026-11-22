@@ -209,11 +209,6 @@ export async function membersRoutes(
           .code(403)
           .send(errorBody('FORBIDDEN', 'Владение передаётся только через owner-transfer'));
       }
-      if (targetIsOwner && !parsed.data.roles.includes('owner')) {
-        return reply
-          .code(409)
-          .send(errorBody('LAST_OWNER', 'В студии должен остаться владелец'));
-      }
 
       await replaceRoles(pool, membership.studioId, targetId, parsed.data.roles);
       return { membership: await findMembership(pool, membership.studioId, targetId) };

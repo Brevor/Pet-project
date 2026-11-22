@@ -94,13 +94,17 @@ async function findCourse(pool: Pool, studioId: string, courseId: string): Promi
 export async function listCourses(
   pool: Pool,
   studioId: string,
-  includeArchived: boolean
+  includeArchived: boolean,
+  search?: string
 ): Promise<CourseRow[]> {
   const { rows } = await pool.query<CourseDbRow>(
     `${SELECT_COURSE}
       WHERE c.studio_id = $1 AND ($2::boolean OR c.archived_at IS NULL)
+        AND ($3::text IS NULL
+             OR c.name ILIKE '%' || $3 || '%'
+             OR COALESCE(c.direction, '') ILIKE '%' || $3 || '%')
       ORDER BY c.name`,
-    [studioId, includeArchived]
+    [studioId, includeArchived, search?.trim() || null]
   );
   return rows.map(toCourse);
 }

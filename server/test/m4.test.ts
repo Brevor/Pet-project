@@ -104,6 +104,15 @@ test('залы: создание, дубль имени, валидация вм
     payload: { name: 'Зал Б', capacity: 0 }
   });
   assert.equal(invalid.statusCode, 422);
+
+  const listed = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/rooms`,
+    headers: auth(token)
+  });
+  assert.equal(listed.statusCode, 200);
+  assert.equal(listed.json().items.length, 1);
+  assert.equal(typeof listed.json().items[0].weeklyLoadHours, 'number');
 });
 
 test('залы: архивация и удаление свободного зала', { skip }, async () => {
@@ -187,6 +196,22 @@ test('курсы: создание, 141 символ отклоняется, д�
     payload: { ...payload, name: 'к'.repeat(140) }
   });
   assert.equal(longOk.statusCode, 201);
+
+  const found = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/courses?q=начин`,
+    headers: auth(token)
+  });
+  assert.equal(found.statusCode, 200);
+  assert.equal(found.json().items.length, 1);
+
+  const notFound = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/courses?q=jazz`,
+    headers: auth(token)
+  });
+  assert.equal(notFound.statusCode, 200);
+  assert.equal(notFound.json().items.length, 0);
 });
 
 test('курс: преподаватель по умолчанию, teacherName и снятие через null', { skip }, async () => {

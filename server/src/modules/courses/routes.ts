@@ -52,8 +52,13 @@ export async function coursesRoutes(app: FastifyInstance, options: { pool: Pool 
       const membership = await requireAccess(pool, request, reply, 'schedule.read');
       if (!membership) return;
 
-      const query = request.query as { includeArchived?: string };
-      const items = await listCourses(pool, membership.studioId, query.includeArchived === 'true');
+      const query = request.query as { includeArchived?: string; q?: string };
+      const items = await listCourses(
+        pool,
+        membership.studioId,
+        query.includeArchived === 'true',
+        query.q
+      );
       return { items, total: items.length };
     }
   );
