@@ -78,7 +78,13 @@
 ### 5.2. `studios`
 
 `id uuid PK`, `name text NOT NULL`, `timezone text NOT NULL DEFAULT 'Europe/Moscow'`,
-`contacts jsonb`, `archived_at timestamptz NULL`, `created_at timestamptz NOT NULL DEFAULT now()`.
+`contacts jsonb`, `referral_code text NOT NULL`, `archived_at timestamptz NULL`,
+`created_at timestamptz NOT NULL DEFAULT now()`.
+
+`referral_code` — публичный код студии (REF-1): 8 символов base32 (`a-z0-9`), генерируется при
+создании студии, уникальный индекс `UNIQUE (lower(referral_code))`. Меняется владельцем или
+администратором (REF-3); при смене старый код освобождается и перестаёт работать (REF-4).
+Членства к коду не привязаны — смена кода не влияет на уже присоединившихся учеников.
 
 ### 5.3. `studio_working_hours`
 
@@ -177,6 +183,16 @@ ALTER TABLE class_sessions ADD CONSTRAINT no_teacher_overlap
 в выборку для новых сеансов, существующие сеансы сохраняются. Удаление зала запрещено при наличии
 сеансов (ROM-4).
 
+**Регистрация владельца (REF-8).** Отдельный адрес регистрации: аккаунт + студия + рабочие часы
++ владелец одной транзакцией (STU-1). Реферальный код генерируется в этой же транзакции; коллизия
+кода — повторная генерация (до 5 попыток), затем 500.
+
+**Присоединение по реферальной ссылке (REF-1…REF-7).** Публичный маршрут без JWT:
+`GET /join/{code}` находит студию по `lower(referral_code)`; нет — 404. Регистрация
+`POST /join/{code}/register` создаёт `users` + `memberships` + `membership_roles('student')`
+одной транзакцией и выдаёт JWT. Авторизованный пользователь — `POST /join/{code}/join`:
+создаёт только членство; повторное обращение — 409 `ALREADY_MEMBER`. Роли сотрудника по ссылке
+не выдаются никогда (REF-7): роль всегда `student`.
 ## 7. Время и часовые пояса
 
 - Все моменты времени — `timestamptz`, хранение в UTC (NFR-3).
@@ -191,6 +207,9 @@ ALTER TABLE class_sessions ADD CONSTRAINT no_teacher_overlap
 
 JWT: `sub` (user id), `iat`, `exp` (24 ч). Студия в токен не зашивается — она берётся из пути и
 проверяется по `memberships` (не зависит от ответа на Q3).
+
+Без JWT доступны: `GET /health`, `POST /auth/register`, `POST /auth/login`, `GET /join/{code}`,
+`POST /join/{code}/register`. Остальные маршруты требуют токен.
 
 Каждый запрос `/api/v1/studios/{studioId}/**` проходит `tenant-guard`: активное членство → набор
 ролей; иначе 403 `NOT_A_MEMBER`. Затем `rbac` проверяет действие:
@@ -230,7 +249,6 @@ JWT: `sub` (user id), `iat`, `exp` (24 ч). Студия в токен не за
 | # | Вопрос | Как влияет на архитектуру | Что заложено сейчас |
 |---|---|---|---|
 | **Q3** | Может ли пользователь состоять в нескольких студиях? | `memberships` допускает несколько записей на пользователя; при ответе «нет» добавляется уникальный индекс `(user_id) WHERE status='active'` и экран выбора студии не нужен | Таблица поддерживает оба варианта, ограничение не поставлено |
-| **Q7** | Как ученик присоединяется к студии без приглашений? | Появится эндпоинт `POST /studios/{id}/join` или подтверждение администратором; контракт **не зафиксирован** | Требование STF-10 помечено как зависящее от Q7 |
 | **Q8** | Нужна ли роль «родитель»? | Добавит значение в CHECK `membership_roles.role` и строки в матрицу прав | Роль отсутствует |
 
 ## 12. Трассировка требований
@@ -238,7 +256,8 @@ JWT: `sub` (user id), `iat`, `exp` (24 ч). Студия в токен не за
 | Требования | Таблицы | Эндпоинты | Компонент |
 |---|---|---|---|
 | STU-1…STU-6 | `studios`, `studio_working_hours`, `memberships`, `membership_roles` | `/auth/register`, `/studios` | `studios` |
-| ACC-1…ACC-4, STF-1…STF-10 | `users`, `memberships`, `membership_roles` | `/auth/*`, `/me`, `/studios/{id}/members` | `auth`, `members` |
+| ACC-1…ACC-8, STF-1…STF-10 | `users`, `memberships`, `membership_roles` | `/auth/*`, `/me`, `/studios/{id}/members` | `auth`, `members` |
+| REF-1…REF-8 | `studios.referral_code`, `memberships` | `/join/{code}`, `/studios/{id}/referral` | `studios`, `members` |
 | ROL-1…ROL-10 | `membership_roles` | все | `rbac` |
 | ROM-1…ROM-6 | `rooms`, `class_sessions` | `/studios/{id}/rooms` | `rooms` |
 | CLS-1…CLS-6 | `courses` | `/studios/{id}/courses` | `courses` |
@@ -256,3 +275,6 @@ JWT: `sub` (user id), `iat`, `exp` (24 ч). Студия в токен не за
 4. **Нет аудита изменений** (кто и когда менял роли): не входит в Фазу 1.
 5. **Удаление серии** затрагивает только будущие сеансы, прошедшие остаются (SCH-8); история
    посещаемости появится с модулем A2.
+6. **Перебор реферальных кодов.** Публичный `GET /join/{code}` позволяет перебирать коды: нужен
+   rate limit по IP (в Фазе 1 — простой счётчик на инстансе), а код из 8 символов base32
+   (≈ 40 бит) делает перебор невыгодным.
