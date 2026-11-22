@@ -3,6 +3,8 @@ import jwt from '@fastify/jwt';
 import type { Pool } from 'pg';
 import { AppError, errorBody } from './errors';
 import { authRoutes } from './modules/auth/routes';
+import { membersRoutes } from './modules/members/routes';
+import { studiosRoutes } from './modules/studios/routes';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -32,11 +34,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.get('/health', async () => ({ status: 'ok' }));
 
   if (options.pool) {
+    const prefix = '/api/v1';
     app.register(authRoutes, {
-      prefix: '/api/v1',
+      prefix,
       pool: options.pool,
       jwtExpiresIn: options.jwtExpiresIn ?? '24h'
     });
+    app.register(studiosRoutes, { prefix, pool: options.pool });
+    app.register(membersRoutes, { prefix, pool: options.pool });
   }
 
   app.setNotFoundHandler(async (request, reply) =>
@@ -56,4 +61,5 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   return app;
 }
+
 
