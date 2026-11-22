@@ -13,13 +13,15 @@ export function StaffTab({ studioId }: { studioId: string }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [isOwner, setIsOwner] = useState(false);
   const [currentEmail, setCurrentEmail] = useState('');
-  const [email, setEmail] = useState('');
-  const [roles, setRoles] = useState<string[]>(['teacher']);
-  const [tempPassword, setTempPassword] = useState('');
   const [error, setError] = useState('');
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftRoles, setDraftRoles] = useState<string[]>([]);
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<Member[]>([]);
+  const [selected, setSelected] = useState<Member | null>(null);
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     const [list, me] = await Promise.all([
@@ -38,35 +40,58 @@ export function StaffTab({ studioId }: { studioId: string }) {
     );
   }, [load]);
 
-  function toggleRole(role: string) {
-    setRoles((current) =>
+  async function searchMember(event: React.FormEvent) {
+    event.preventDefault();
+    setError('');
+    setSelected(null);
+    try {
+      const params = new URLSearchParams();
+      if (searchTerm.trim()) params.set('q', searchTerm.trim());
+      const data = await api<{ items: Member[] }>(
+        `/studios/${studioId}/members?${params.toString()}`
+      );
+      setSearchResults(data.items);
+      if (data.items.length === 0) {
+        setError('Участник не найден. Новые пользователи сначала регистрируются по ссылке студии');
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Не удалось найти участника');
+    }
+  }
+
+  function pickMember(member: Member) {
+    setSelected(member);
+    setSelectedRoles([...member.roles]);
+    setError('');
+  }
+
+  function toggleSelectedRole(role: string) {
+    setSelectedRoles((current) =>
       current.includes(role) ? current.filter((item) => item !== role) : [...current, role]
     );
+  }
+
+  async function saveSelectedRoles() {
+    if (!selected) return;
+    setError('');
+    try {
+      await api(`/studios/${studioId}/members/${selected.membershipId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ roles: selectedRoles })
+      });
+      setSelected(null);
+      setSearchResults([]);
+      setSearchTerm('');
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Не удалось изменить роли');
+    }
   }
 
   function toggleDraftRole(role: string) {
     setDraftRoles((current) =>
       current.includes(role) ? current.filter((item) => item !== role) : [...current, role]
     );
-  }
-
-  async function addMember(event: React.FormEvent) {
-    event.preventDefault();
-    setError('');
-    setTempPassword('');
-    try {
-      const result = await api<{ temporaryPassword?: string }>(`/studios/${studioId}/members`, {
-        method: 'POST',
-        body: JSON.stringify({ email, roles })
-      });
-      setEmail('');
-      if (result.temporaryPassword) {
-        setTempPassword(result.temporaryPassword);
-      }
-      await load();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Не удалось добавить участника');
-    }
   }
 
   function startEdit(member: Member) {
@@ -115,54 +140,106 @@ export function StaffTab({ studioId }: { studioId: string }) {
     }
   }
 
+  const selectedIsOwner = selected?.roles.includes('owner') ?? false;
+  const selectedIsSelf = selected?.email === currentEmail;
+
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-6">
       <h3 className="text-base font-semibold">Персонал</h3>
 
-      <form onSubmit={addMember} className="mt-4 space-y-3 rounded-lg bg-slate-50 p-4">
-        <div className="flex flex-wrap gap-3">
-          <input
-            type="email"
-            required
-            placeholder="email участника"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="min-w-[240px] flex-1 rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-violet-500"
-          />
+      <form onSubmit={searchMember} className="mt-4 space-y-3 rounded-lg bg-slate-50 p-4">
+        <div>
+          <p className="text-sm font-medium text-slate-700">Назначить роли участнику</p>
+          <p className="text-xs text-slate-500">
+            Новые пользователи регистрируются по ссылке студии и получают роль «ученик»; новые
+            ученики добавляются во вкладке «Ученики». Здесь выбирается участник и его роли.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="min-w-[240px] flex-1 text-sm">
+            <span className="block text-slate-600">Email или имя участника</span>
+            <input
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="student@example.com"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-violet-500"
+            />
+          </label>
           <button
             type="submit"
             className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
           >
-            Добавить
+            Найти
           </button>
         </div>
 
-        <div className="flex flex-wrap gap-3 text-sm">
-          {ALL_ROLES.filter((role) => role !== 'owner').map((role) => (
-            <label key={role} className="flex items-center gap-1.5">
-              <input
-                type="checkbox"
-                checked={roles.includes(role)}
-                onChange={() => toggleRole(role)}
-                className="rounded border-slate-300"
-              />
-              {ROLE_LABELS[role]}
-            </label>
-          ))}
-        </div>
+        {searchResults.length > 0 && !selected && (
+          <ul className="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white text-sm">
+            {searchResults.map((member) => (
+              <li key={member.membershipId}>
+                <button
+                  type="button"
+                  onClick={() => pickMember(member)}
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                >
+                  <span>
+                    <span className="font-medium">{member.displayName ?? member.email}</span>
+                    <span className="ml-2 text-xs text-slate-500">{member.email}</span>
+                  </span>
+                  <span className="text-xs text-slate-500">{member.roles.join(', ')}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
 
-        <p className="text-xs text-slate-500">
-          Приглашений нет: аккаунт должен существовать. Для роли «Ученик» аккаунт создаётся
-          автоматически, временный пароль показывается один раз.
-        </p>
+        {selected && (
+          <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-medium">{selected.displayName ?? selected.email}</span>
+              <span className="text-xs text-slate-500">{selected.email}</span>
+              <button
+                type="button"
+                onClick={() => setSelected(null)}
+                className="ml-auto rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
+              >
+                Отмена
+              </button>
+            </div>
+
+            {selectedIsOwner || selectedIsSelf ? (
+              <p className="text-xs text-slate-600">
+                {selectedIsOwner
+                  ? 'Роли владельца здесь не меняются: владение передаётся кнопкой «Передать владение» у участника в списке ниже.'
+                  : 'Свои роли менять нельзя — попросите это сделать владельца или администратора.'}
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-2 text-sm">
+                  {ALL_ROLES.filter((role) => role !== 'owner').map((role) => (
+                    <label key={role} className="flex items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        checked={selectedRoles.includes(role)}
+                        onChange={() => toggleSelectedRole(role)}
+                        className="rounded border-slate-300"
+                      />
+                      {ROLE_LABELS[role]}
+                    </label>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void saveSelectedRoles()}
+                  className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+                >
+                  Сохранить роли
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </form>
-
-      {tempPassword && (
-        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Временный пароль: <span className="font-mono font-semibold">{tempPassword}</span> — передайте
-          ученику лично.
-        </p>
-      )}
 
       {error && <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
