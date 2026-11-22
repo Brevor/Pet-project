@@ -17,7 +17,10 @@ const baseCourse = {
   capacity: z.number().int().min(1).max(500)
 };
 
-const createBody = z.object(baseCourse);
+const createBody = z.object({
+  ...baseCourse,
+  teacherMembershipId: z.string().uuid().nullable().optional()
+});
 const patchBody = z
   .object({
     name: baseCourse.name.optional(),
@@ -26,6 +29,7 @@ const patchBody = z
     kind: baseCourse.kind.optional(),
     defaultDurationMin: baseCourse.defaultDurationMin.optional(),
     capacity: baseCourse.capacity.optional(),
+    teacherMembershipId: z.string().uuid().nullable().optional(),
     archived: z.boolean().optional()
   })
   .refine((value) => Object.keys(value).length > 0, { message: 'Нет полей для изменения' });

@@ -60,6 +60,21 @@ async function createStudio(token: string): Promise<string> {
   return id;
 }
 
+async function addMember(
+  token: string,
+  studioId: string,
+  email: string,
+  roles: string[]
+): Promise<void> {
+  const response = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studioId}/members`,
+    headers: auth(token),
+    payload: { email, roles }
+  });
+  assert.equal(response.statusCode, 201, JSON.stringify(response.json()));
+}
+
 test('залы: создание, дубль имени, валидация вместимости', { skip }, async () => {
   const { token } = await registerUser();
   const studioId = await createStudio(token);
@@ -172,4 +187,124 @@ test('курсы: создание, 141 символ отклоняется, д�
     payload: { ...payload, name: 'к'.repeat(140) }
   });
   assert.equal(longOk.statusCode, 201);
+});
+
+test('курс: преподаватель по умолчанию, teacherName и снятие через null', { skip }, async () => {
+  const owner = await registerUser();
+  const studioId = await createStudio(owner.token);
+  const teacher = await registerUser();
+  await addMember(owner.token, studioId, teacher.email, ['teacher']);
+
+  const members = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/members?role=teacher`,
+    headers: auth(owner.token)
+  });
+  assert.equal(members.statusCode, 200);
+  const teacherMembershipId = members.json().items[0].membershipId as string;
+
+  const created = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studioId}/courses`,
+    headers: auth(owner.token),
+    payload: {
+      name: 'Hip-Hop · с преподавателем',
+      level: 'beginner',
+      kind: 'group',
+      defaultDurationMin: 90,
+      capacity: 14,
+      teacherMembershipId
+    }
+  });
+  assert.equal(created.statusCode, 201, JSON.stringify(created.json()));
+  assert.equal(created.json().course.teacherMembershipId, teacherMembershipId);
+  assert.equal(created.json().course.teacherName, 'Тест');
+
+  const listed = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/courses`,
+    headers: auth(owner.token)
+  });
+  assert.equal(listed.json().items[0].teacherMembershipId, teacherMembershipId);
+  assert.equal(listed.json().items[0].teacherName, 'Тест');
+
+  const cleared = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${studioId}/courses/${created.json().course.id}`,
+    headers: auth(owner.token),
+    payload: { teacherMembershipId: null }
+  });
+  assert.equal(cleared.statusCode, 200, JSON.stringify(cleared.json()));
+  assert.equal(cleared.json().course.teacherMembershipId, null);
+  assert.equal(cleared.json().course.teacherName, null);
+});
+
+test('курс: не-преподаватель и членство чужой студии отклоняются', { skip }, async () => {
+  const owner = await registerUser();
+  const studioId = await createStudio(owner.token);
+
+  const assistant = await registerUser();
+  await addMember(owner.token, studioId, assistant.email, ['assistant']);
+
+  const members = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/members?role=assistant`,
+    headers: auth(owner.token)
+  });
+  assert.equal(members.statusCode, 200);
+  const assistantMembershipId = members.json().items[0].membershipId as string;
+
+  const basePayload = {
+    name: 'Stretching',
+    level: 'none',
+    kind: 'group',
+    defaultDurationMin: 60,
+    capacity: 10
+  };
+
+  const notTeacher = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studioId}/courses`,
+    headers: auth(owner.token),
+    payload: { ...basePayload, teacherMembershipId: assistantMembershipId }
+  });
+  assert.equal(notTeacher.statusCode, 422);
+  assert.equal(notTeacher.json().error.code, 'NOT_A_TEACHER');
+
+  const otherOwner = await registerUser();
+  const otherStudioId = await createStudio(otherOwner.token);
+  const foreignTeacher = await registerUser();
+  await addMember(otherOwner.token, otherStudioId, foreignTeacher.email, ['teacher']);
+  const foreignMembers = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${otherStudioId}/members?role=teacher`,
+    headers: auth(otherOwner.token)
+  });
+  const foreignTeacherId = foreignMembers.json().items[0].membershipId as string;
+
+  const foreign = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studioId}/courses`,
+    headers: auth(owner.token),
+    payload: { ...basePayload, name: 'Йога', teacherMembershipId: foreignTeacherId }
+  });
+  assert.equal(foreign.statusCode, 422);
+  assert.equal(foreign.json().error.code, 'NOT_A_TEACHER');
+
+  const course = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studioId}/courses`,
+    headers: auth(owner.token),
+    payload: basePayload
+  });
+  assert.equal(course.statusCode, 201);
+
+  const patched = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${studioId}/courses/${course.json().course.id}`,
+    headers: auth(owner.token),
+    payload: { teacherMembershipId: assistantMembershipId }
+  });
+  assert.equal(patched.statusCode, 422);
+  assert.equal(patched.json().error.code, 'NOT_A_TEACHER');
 });
