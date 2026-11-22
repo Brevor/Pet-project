@@ -1,9 +1,9 @@
 # Контракты API: ядро студии
 
-> **Версия:** 1.4.0
+> **Версия:** 1.5.0
 > **Дата:** 2026-11-22
 > **Роль:** Architect
-> **Основание:** `doc/architecture.md` (v1.5.0), `doc/requirements/studio.md` (approved, v0.6.0)
+> **Основание:** `doc/architecture.md` (v1.7.0), `doc/requirements/studio.md` (approved, v0.9.0), `doc/requirements/profile.md` (approved, v0.4.0)
 > **Статус:** действует; соответствует реализации M0–M9. Изменения 1.1.0 (§0) реализованы в M8.
 > Изменения 1.3.1 — уточнение семантики полей, которые уже есть в коде (`weeklyLoadHours`, `q`,
 > границы периода расписания). Изменения 1.3.2 — требования v0.5.0 (недельный календарь,
@@ -84,7 +84,9 @@
 
 ```json
 {
-  "user": { "id": "…", "email": "…", "displayName": "Анна" },
+  "user": { "id": "…", "email": "…", "displayName": "Анна", "firstName": "Анна", "lastName": "Ковалёва",
+            "phone": "+7 916 123-45-67", "socialUrl": "https://vk.com/anna", "messengerContact": "@anna",
+            "about": "Преподаю hip-hop с 2015 года", "avatarUrl": "/api/v1/avatars/u_8f3a.png" },
   "memberships": [
     { "studioId": "…", "studioName": "Dance Lab", "roles": ["owner"], "status": "active" }
   ]
@@ -92,6 +94,53 @@
 ```
 
 Пустой массив `memberships` — валидное состояние (ACC-4): клиент показывает экран создания студии.
+
+`displayName` — вычисляемое: `Имя Фамилия` → `display_name` → email (PRF-9, Q15).
+`avatarUrl` — `null`, если аватар не загружен.
+
+### PATCH /me
+
+Личные поля профиля (PRF-2…PRF-5). JWT обязателен, студийный контекст не нужен.
+
+```json
+{ "firstName": "Анна", "lastName": "Ковалёва", "phone": "+7 916 123-45-67",
+  "socialUrl": "https://vk.com/anna", "messengerContact": "@anna", "about": "…" }
+```
+
+`200` → `{ "user": { … } }` в форме `GET /me`.
+
+| Код | Когда |
+|---|---|
+| `422 VALIDATION` | `firstName`/`lastName` пусты или > 80 символов (обязательны, Q16); `phone` не по формату или > 32; `socialUrl` без схемы `http(s)://` или > 200; `messengerContact` > 100; `about` > 500 — `details.fields.<поле>` |
+| `422 VALIDATION` | в теле передан `email` — email является логином и не меняется (PRF-2, Q13) |
+| `401 UNAUTHORIZED` | нет или невалидный токен |
+
+### POST /me/avatar
+
+`multipart/form-data`, поле `file`. Допустимы `image/jpeg`, `image/png`, `image/webp`, до 2 МБ.
+Файл сохраняется в хранилище (том), в `users.avatar_key` — ключ (Q18).
+
+`200` → `{ "user": { … } }` с новым `avatarUrl`. Ошибки: `422 VALIDATION`
+(`details.fields.avatar`) — тип, размер или пустой файл; `401 UNAUTHORIZED`.
+
+### DELETE /me/avatar
+
+`204`. Удаляет файл и обнуляет `avatar_key`; повторный вызов — тоже `204` (идемпотентно).
+
+### POST /me/password
+
+```json
+{ "currentPassword": "…", "newPassword": "…" }
+```
+
+`204`. Ошибки: `401 INVALID_CREDENTIALS` (текущий неверен), `422 VALIDATION`
+(`newPassword` < 8 символов или совпадает с текущим). Текущая сессия остаётся рабочей (PRF-6).
+
+### GET /avatars/{key} — публичный
+
+Отдаёт файл аватара (`Content-Type` по типу изображения, кеш `max-age=86400`).
+`404 NOT_FOUND`, если ключ не существует. Доступен без JWT: аватар виден всем участникам (Q17).
+
 
 ## 3. Студии
 
@@ -184,15 +233,22 @@ owner: остальные роли получают `403 NOT_A_MEMBER` на вс
 {
   "items": [
     { "membershipId": "…", "userId": "…", "email": "…", "displayName": "Анна",
+      "firstName": "Анна", "lastName": "Ковалёва", "avatarUrl": "/api/v1/avatars/u_8f3a.png",
+      "about": "Преподаю hip-hop с 2015 года",
       "roles": ["teacher", "curator"], "status": "active" }
   ],
   "total": 1
 }
 ```
 
-Право: `members.read` — только **owner, admin**. Исключение: фильтр `?role=student` доступен
-по праву `students.write` (owner, admin, curator) — куратор ведёт учеников, но не видит персонал
-(ROL-7, ROL-12). Для расписания справочник преподавателей — отдельный эндпоинт ниже.
+Право: `members.list` — **все роли, кроме «ученика»** (owner, admin, curator, teacher, assistant)
+видят список сотрудников только для чтения (ROL-14). Исключение по фильтру: `?role=student`
+доступен по праву `students.write` (owner, admin, curator) — список учеников (ROL-7).
+Управление ролями — `members.write` (owner, admin), см. `PATCH /members`.
+
+`email` отдаётся только ролям с `members.write` (owner, admin); остальным — `null`
+(контакты видны всем, email — только управляющим, PRF-2, Q17).
+`avatarUrl` и `about` отдаются всем, у кого есть доступ к эндпоинту (Q17).
 
 ### GET /studios/{studioId}/teachers
 
@@ -205,7 +261,8 @@ owner: остальные роли получают `403 NOT_A_MEMBER` на вс
 
 ```json
 {
-  "items": [ { "membershipId": "…", "displayName": "Анна Ковалёва" } ],
+  "items": [ { "membershipId": "…", "displayName": "Анна Ковалёва",
+               "avatarUrl": "/api/v1/avatars/u_8f3a.png", "about": "…" } ],
   "total": 1
 }
 ```
@@ -478,7 +535,7 @@ owner: остальные роли получают `403 NOT_A_MEMBER` на вс
 | `GET /studios/{id}`, `/me` | `studio.read` |
 | `PATCH /studios/{id}` | `studio.write` |
 | `POST /studios/{id}/archive` | `studio.archive` |
-| `GET /studios/{id}/members` | `members.read`; `?role=student` — `students.write` |
+| `GET /studios/{id}/members` | `members.list` (все, кроме `student`); `?role=student` — `students.write`; `PATCH/DELETE` — `members.write` |
 | `GET /studios/{id}/teachers` | `schedule.read` |
 | `POST/PATCH/DELETE /studios/{id}/members…` | `members.write` |
 | `POST …/members` с `roles:["student"]` | `students.write` |
