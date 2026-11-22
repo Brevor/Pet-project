@@ -381,3 +381,52 @@ test('смена ролей: свои роли и владелец защище�
   assert.equal(normal.statusCode, 200);
   assert.deepEqual(normal.json().membership.roles, ['curator', 'teacher']);
 });
+
+test('ошибка валидации несёт details.fields', { skip }, async () => {
+  const { token } = await registerUser();
+  const response = await requireApp().inject({
+    method: 'POST',
+    url: '/api/v1/studios',
+    headers: auth(token),
+    payload: { name: 'X' }
+  });
+
+  assert.equal(response.statusCode, 422);
+  assert.equal(response.json().error.code, 'VALIDATION');
+  assert.ok(response.json().error.details.fields.name);
+});
+
+test('неизвестный часовой пояс — 422 INVALID_TIMEZONE', { skip }, async () => {
+  const { token } = await registerUser();
+  const response = await requireApp().inject({
+    method: 'POST',
+    url: '/api/v1/studios',
+    headers: auth(token),
+    payload: { name: 'Mars Lab', timezone: 'Mars/Crater' }
+  });
+
+  assert.equal(response.statusCode, 422);
+  assert.equal(response.json().error.code, 'INVALID_TIMEZONE');
+  assert.ok(response.json().error.details.fields.timezone);
+});
+
+test('opensAt >= closesAt — 422 INVALID_WORKING_HOURS', { skip }, async () => {
+  const { token } = await registerUser();
+  const workingHours = [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({
+    weekday,
+    opensAt: '22:00',
+    closesAt: '09:00',
+    isClosed: false
+  }));
+
+  const created = await requireApp().inject({
+    method: 'POST',
+    url: '/api/v1/studios',
+    headers: auth(token),
+    payload: { name: 'Night Lab', timezone: 'Europe/Moscow', workingHours }
+  });
+
+  assert.equal(created.statusCode, 422);
+  assert.equal(created.json().error.code, 'INVALID_WORKING_HOURS');
+  assert.ok(created.json().error.details.fields['workingHours.1']);
+});

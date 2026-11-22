@@ -194,6 +194,10 @@ test('конфликт по залу и по преподавателю', { skip
   });
   assert.equal(roomConflict.statusCode, 409);
   assert.equal(roomConflict.json().error.code, 'ROOM_CONFLICT');
+  const roomDetails = roomConflict.json().error.details;
+  assert.ok(roomDetails.conflictingSessionId);
+  assert.ok(roomDetails.startsAt);
+  assert.ok(roomDetails.endsAt);
 
   const teacherConflict = await requireApp().inject({
     method: 'POST',
@@ -203,6 +207,7 @@ test('конфликт по залу и по преподавателю', { skip
   });
   assert.equal(teacherConflict.statusCode, 409);
   assert.equal(teacherConflict.json().error.code, 'TEACHER_CONFLICT');
+  assert.ok(teacherConflict.json().error.details.conflictingSessionId);
 });
 
 test('серия создаёт сеансы и отдаётся в расписании', { skip }, async () => {
@@ -301,6 +306,7 @@ test('зал с занятиями удалить нельзя', { skip }, async
 
   assert.equal(response.statusCode, 409);
   assert.equal(response.json().error.code, 'ROOM_IN_USE');
+  assert.equal(response.json().error.details.sessionCount, 1);
 });
 
 test('длительность берётся из курса, durationMin запрещён', { skip }, async () => {

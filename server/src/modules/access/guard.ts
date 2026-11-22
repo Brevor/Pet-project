@@ -69,7 +69,7 @@ export async function requireAccess(
 
   const studioId = (request.params as { studioId?: string }).studioId;
   if (!studioId) {
-    reply.code(400).send(errorBody('VALIDATION', 'Не указан идентификатор студии'));
+    reply.code(422).send(errorBody('VALIDATION', 'Не указан идентификатор студии'));
     return null;
   }
 

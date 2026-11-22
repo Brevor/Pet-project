@@ -41,7 +41,7 @@ export async function authRoutes(
     if (!parsed.success) {
       return reply
         .code(422)
-        .send(errorBody('VALIDATION', 'Некорректные данные', fieldErrors(parsed.error)));
+        .send(errorBody('VALIDATION', 'Некорректные данные', { fields: fieldErrors(parsed.error) }));
     }
 
     const user = await registerUser(pool, parsed.data);
@@ -55,7 +55,7 @@ export async function authRoutes(
     if (!parsed.success) {
       return reply
         .code(422)
-        .send(errorBody('VALIDATION', 'Некорректные данные', fieldErrors(parsed.error)));
+        .send(errorBody('VALIDATION', 'Некорректные данные', { fields: fieldErrors(parsed.error) }));
     }
 
     const user = await authenticateUser(pool, parsed.data.email, parsed.data.password);

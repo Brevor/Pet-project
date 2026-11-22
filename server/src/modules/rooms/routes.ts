@@ -51,7 +51,7 @@ export async function roomsRoutes(app: FastifyInstance, options: { pool: Pool })
       if (!parsed.success) {
         return reply
           .code(422)
-          .send(errorBody('VALIDATION', 'Некорректные данные', fieldErrors(parsed.error)));
+          .send(errorBody('VALIDATION', 'Некорректные данные', { fields: fieldErrors(parsed.error) }));
       }
 
       const room = await createRoom(pool, membership.studioId, parsed.data);
@@ -70,7 +70,7 @@ export async function roomsRoutes(app: FastifyInstance, options: { pool: Pool })
       if (!parsed.success) {
         return reply
           .code(422)
-          .send(errorBody('VALIDATION', 'Некорректные данные', fieldErrors(parsed.error)));
+          .send(errorBody('VALIDATION', 'Некорректные данные', { fields: fieldErrors(parsed.error) }));
       }
 
       const roomId = (request.params as { roomId: string }).roomId;

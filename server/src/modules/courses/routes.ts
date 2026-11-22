@@ -69,7 +69,7 @@ export async function coursesRoutes(app: FastifyInstance, options: { pool: Pool 
       if (!parsed.success) {
         return reply
           .code(422)
-          .send(errorBody('VALIDATION', 'Некорректные данные', fieldErrors(parsed.error)));
+          .send(errorBody('VALIDATION', 'Некорректные данные', { fields: fieldErrors(parsed.error) }));
       }
 
       const course = await createCourse(pool, membership.studioId, parsed.data);
@@ -88,7 +88,7 @@ export async function coursesRoutes(app: FastifyInstance, options: { pool: Pool 
       if (!parsed.success) {
         return reply
           .code(422)
-          .send(errorBody('VALIDATION', 'Некорректные данные', fieldErrors(parsed.error)));
+          .send(errorBody('VALIDATION', 'Некорректные данные', { fields: fieldErrors(parsed.error) }));
       }
 
       const courseId = (request.params as { courseId: string }).courseId;

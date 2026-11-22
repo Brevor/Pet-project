@@ -109,8 +109,11 @@ export async function deleteRoom(pool: Pool, studioId: string, roomId: string): 
     `SELECT count(*)::text AS count FROM class_sessions WHERE studio_id = $1 AND room_id = $2`,
     [studioId, roomId]
   );
-  if (Number(rows[0]?.count ?? '0') > 0) {
-    throw new AppError(409, 'ROOM_IN_USE', 'У зала есть занятия — архивируйте его вместо удаления');
+  const sessionCount = Number(rows[0]?.count ?? '0');
+  if (sessionCount > 0) {
+    throw new AppError(409, 'ROOM_IN_USE', 'У зала есть занятия — архивируйте его вместо удаления', {
+      sessionCount
+    });
   }
 
   const result = await pool.query(`DELETE FROM rooms WHERE studio_id = $1 AND id = $2`, [

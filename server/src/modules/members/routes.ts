@@ -92,7 +92,7 @@ export async function membersRoutes(
       if (!parsed.success) {
         return reply
           .code(422)
-          .send(errorBody('VALIDATION', 'Некорректные данные', fieldErrors(parsed.error)));
+          .send(errorBody('VALIDATION', 'Некорректные данные', { fields: fieldErrors(parsed.error) }));
       }
 
       try {
@@ -161,7 +161,7 @@ export async function membersRoutes(
       if (!parsed.success) {
         return reply
           .code(422)
-          .send(errorBody('VALIDATION', 'Некорректные данные', fieldErrors(parsed.error)));
+          .send(errorBody('VALIDATION', 'Некорректные данные', { fields: fieldErrors(parsed.error) }));
       }
 
       try {
@@ -236,7 +236,7 @@ export async function membersRoutes(
       if (!parsed.success) {
         return reply
           .code(422)
-          .send(errorBody('VALIDATION', 'Некорректные данные', fieldErrors(parsed.error)));
+          .send(errorBody('VALIDATION', 'Некорректные данные', { fields: fieldErrors(parsed.error) }));
       }
 
       await transferOwnership(pool, membership.studioId, parsed.data.membershipId);

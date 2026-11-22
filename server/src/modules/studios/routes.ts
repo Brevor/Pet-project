@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { z } from 'zod';
-import { errorBody } from '../../errors';
+import { errorBody, type ApiErrorBody } from '../../errors';
 import { listMemberships } from '../access/repository';
 import { currentUserId, requireAccess } from '../access/guard';
 import { validateReferralCode } from './referral';
@@ -24,8 +24,8 @@ function withReferral(view: StudioView): StudioView & { referralCode: string; re
 
 const hourSchema = z.object({
   weekday: z.number().int().min(1).max(7),
-  opensAt: z.string().regex(/^\d{2}:\d{2}$/),
-  closesAt: z.string().regex(/^\d{2}:\d{2}$/),
+  opensAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Ожидается время HH:MM'),
+  closesAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Ожидается время HH:MM'),
   isClosed: z.boolean().optional().default(false)
 });
 
@@ -51,6 +51,52 @@ function fieldErrors(error: z.ZodError): Record<string, string> {
   return result;
 }
 
+function isKnownTimezone(timezone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function workingHoursProblem(
+  hours: Array<{ weekday: number; opensAt: string; closesAt: string; isClosed: boolean }>
+): Record<string, string> | null {
+  const fields: Record<string, string> = {};
+  const seen = new Set<number>();
+  for (const hour of hours) {
+    const key = `workingHours.${hour.weekday}`;
+    if (seen.has(hour.weekday)) {
+      fields[key] = 'День недели повторяется';
+    }
+    seen.add(hour.weekday);
+    if (!hour.isClosed && hour.opensAt >= hour.closesAt) {
+      fields[key] = 'opensAt должен быть раньше closesAt';
+    }
+  }
+  if (hours.length > 0 && seen.size !== 7) {
+    fields.workingHours = 'Нужны все 7 дней недели';
+  }
+  return Object.keys(fields).length > 0 ? fields : null;
+}
+
+function studioValidation(
+  timezone: string | undefined,
+  hours: Array<{ weekday: number; opensAt: string; closesAt: string; isClosed: boolean }> | undefined
+): ApiErrorBody | null {
+  if (timezone !== undefined && !isKnownTimezone(timezone)) {
+    return errorBody('INVALID_TIMEZONE', 'Неизвестный часовой пояс', {
+      fields: { timezone: 'Неизвестный часовой пояс' }
+    });
+  }
+  const problem = hours ? workingHoursProblem(hours) : null;
+  if (problem) {
+    return errorBody('INVALID_WORKING_HOURS', 'Рабочие часы заданы некорректно', { fields: problem });
+  }
+  return null;
+}
+
 export interface StudiosRoutesOptions {
   pool: Pool;
 }
@@ -72,7 +118,12 @@ export async function studiosRoutes(
     if (!parsed.success) {
       return reply
         .code(422)
-        .send(errorBody('VALIDATION', 'Некорректные данные', fieldErrors(parsed.error)));
+        .send(errorBody('VALIDATION', 'Некорректные данные', { fields: fieldErrors(parsed.error) }));
+    }
+
+    const invalid = studioValidation(parsed.data.timezone, parsed.data.workingHours);
+    if (invalid) {
+      return reply.code(422).send(invalid);
     }
 
     const view = await createStudioWithOwner(pool, currentUserId(request)!, parsed.data);
@@ -98,7 +149,12 @@ export async function studiosRoutes(
     if (!parsed.success) {
       return reply
         .code(422)
-        .send(errorBody('VALIDATION', 'Некорректные данные', fieldErrors(parsed.error)));
+        .send(errorBody('VALIDATION', 'Некорректные данные', { fields: fieldErrors(parsed.error) }));
+    }
+
+    const invalid = studioValidation(parsed.data.timezone, parsed.data.workingHours);
+    if (invalid) {
+      return reply.code(422).send(invalid);
     }
 
     const view = await updateStudio(pool, membership.studioId, parsed.data);
