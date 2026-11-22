@@ -2,7 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../../errors';
 
 export interface SessionView {
-  id: string;
+  sessionId: string;
   courseId: string;
   courseName: string;
   roomId: string;
@@ -50,7 +50,7 @@ const SELECT_SESSION = `
 
 function toSession(row: SessionDbRow): SessionView {
   return {
-    id: row.id,
+    sessionId: row.id,
     courseId: row.course_id,
     courseName: row.course_name,
     roomId: row.room_id,
@@ -109,24 +109,39 @@ function minutes(value: string): number {
   return (hours ?? 0) * 60 + (mins ?? 0);
 }
 
-async function assertRefs(
+interface CourseRefs {
+  durationMin: number;
+  teacherMembershipId: string | null;
+}
+
+async function getCourseRefs(
   pool: Pool,
   studioId: string,
-  courseId: string,
-  roomId: string,
-  teacherMembershipId: string
-): Promise<void> {
-  const course = await pool.query<{ archived_at: string | null }>(
-    `SELECT archived_at FROM courses WHERE studio_id = $1 AND id = $2`,
+  courseId: string
+): Promise<CourseRefs> {
+  const { rows, rowCount } = await pool.query<{
+    archived_at: string | null;
+    default_duration_min: number;
+    teacher_membership_id: string | null;
+  }>(
+    `SELECT archived_at, default_duration_min, teacher_membership_id
+       FROM courses WHERE studio_id = $1 AND id = $2`,
     [studioId, courseId]
   );
-  if (course.rowCount === 0) {
+  if (rowCount === 0) {
     throw new AppError(404, 'NOT_FOUND', 'Курс не найден');
   }
-  if (course.rows[0]!.archived_at) {
+  const course = rows[0]!;
+  if (course.archived_at) {
     throw new AppError(422, 'ARCHIVED_COURSE', 'Курс в архиве');
   }
+  return {
+    durationMin: course.default_duration_min,
+    teacherMembershipId: course.teacher_membership_id
+  };
+}
 
+async function assertRoom(pool: Pool, studioId: string, roomId: string): Promise<void> {
   const room = await pool.query<{ archived_at: string | null }>(
     `SELECT archived_at FROM rooms WHERE studio_id = $1 AND id = $2`,
     [studioId, roomId]
@@ -137,7 +152,13 @@ async function assertRefs(
   if (room.rows[0]!.archived_at) {
     throw new AppError(422, 'ARCHIVED_ROOM', 'Зал в архиве');
   }
+}
 
+async function assertTeacher(
+  pool: Pool,
+  studioId: string,
+  teacherMembershipId: string
+): Promise<void> {
   const teacher = await pool.query<{ role: string }>(
     `SELECT mr.role
        FROM memberships m
@@ -148,6 +169,24 @@ async function assertRefs(
   if (teacher.rowCount === 0) {
     throw new AppError(422, 'NOT_A_TEACHER', 'Участник не является преподавателем');
   }
+}
+
+async function resolveTeacher(
+  pool: Pool,
+  studioId: string,
+  explicit: string | undefined,
+  fallback: string | null
+): Promise<string> {
+  const teacherMembershipId = explicit ?? fallback;
+  if (!teacherMembershipId) {
+    throw new AppError(422, 'VALIDATION', 'Не указан преподаватель', {
+      fields: {
+        teacherMembershipId: 'Укажите преподавателя: у курса нет преподавателя по умолчанию'
+      }
+    });
+  }
+  await assertTeacher(pool, studioId, teacherMembershipId);
+  return teacherMembershipId;
 }
 
 interface ConflictRow {
@@ -230,9 +269,8 @@ function queryFailedWithOverlap(error: unknown): boolean {
 export interface SingleSessionInput {
   courseId: string;
   roomId: string;
-  teacherMembershipId: string;
+  teacherMembershipId?: string;
   startsAt: string;
-  durationMin: number;
 }
 
 export async function createSingleSession(
@@ -240,9 +278,17 @@ export async function createSingleSession(
   studioId: string,
   input: SingleSessionInput
 ): Promise<{ created: number; seriesId: null; items: Array<{ sessionId: string; startsAt: string; endsAt: string }> }> {
-  await assertRefs(pool, studioId, input.courseId, input.roomId, input.teacherMembershipId);
+  const course = await getCourseRefs(pool, studioId, input.courseId);
+  await assertRoom(pool, studioId, input.roomId);
+  const teacherMembershipId = await resolveTeacher(
+    pool,
+    studioId,
+    input.teacherMembershipId,
+    course.teacherMembershipId
+  );
+  const durationMin = course.durationMin;
 
-  const { timezone } = await getStudioSettings(pool, studioId);
+  const { timezone, hours } = await getStudioSettings(pool, studioId);
   const local = await pool.query<{ dow: number; start_time: string }>(
     `SELECT extract(isodow from ($1::timestamptz AT TIME ZONE $2))::int AS dow,
             to_char($1::timestamptz AT TIME ZONE $2, 'HH24:MI') AS start_time`,
@@ -250,30 +296,26 @@ export async function createSingleSession(
   );
 
   const localRow = local.rows[0]!;
-  const hours = (await getStudioSettings(pool, studioId)).hours.find(
-    (hour) => hour.weekday === localRow.dow
-  );
-  if (!hours || hours.isClosed) {
+  const day = hours.find((hour) => hour.weekday === localRow.dow);
+  if (!day || day.isClosed) {
     throw new AppError(422, 'OUTSIDE_WORKING_HOURS', 'В этот день студия не работает');
   }
   const startMinutes = minutes(localRow.start_time);
-  if (startMinutes < minutes(hours.opensAt) || startMinutes + input.durationMin > minutes(hours.closesAt)) {
+  if (startMinutes < minutes(day.opensAt) || startMinutes + durationMin > minutes(day.closesAt)) {
     throw new AppError(
       422,
       'OUTSIDE_WORKING_HOURS',
-      `Сеанс выходит за рабочие часы (${hours.opensAt}–${hours.closesAt})`
+      `Сеанс выходит за рабочие часы (${day.opensAt}–${day.closesAt})`
     );
   }
 
-  const endsAt = new Date(
-    new Date(input.startsAt).getTime() + input.durationMin * 60_000
-  ).toISOString();
+  const endsAt = new Date(new Date(input.startsAt).getTime() + durationMin * 60_000).toISOString();
 
   const conflict = await findConflict(
     pool,
     studioId,
     input.roomId,
-    input.teacherMembershipId,
+    teacherMembershipId,
     input.startsAt,
     endsAt
   );
@@ -285,7 +327,7 @@ export async function createSingleSession(
       seriesId: null,
       courseId: input.courseId,
       roomId: input.roomId,
-      teacherMembershipId: input.teacherMembershipId,
+      teacherMembershipId,
       startsAt: input.startsAt,
       endsAt
     });
@@ -301,12 +343,11 @@ export async function createSingleSession(
 export interface SeriesInput {
   courseId: string;
   roomId: string;
-  teacherMembershipId: string;
+  teacherMembershipId?: string;
   weekdays: number[];
   startTime: string;
   startsOn: string;
   until: string;
-  durationMin: number;
 }
 
 export async function createSeries(
@@ -314,7 +355,15 @@ export async function createSeries(
   studioId: string,
   input: SeriesInput
 ): Promise<{ created: number; seriesId: string; items: Array<{ sessionId: string; startsAt: string; endsAt: string }> }> {
-  await assertRefs(pool, studioId, input.courseId, input.roomId, input.teacherMembershipId);
+  const course = await getCourseRefs(pool, studioId, input.courseId);
+  await assertRoom(pool, studioId, input.roomId);
+  const teacherMembershipId = await resolveTeacher(
+    pool,
+    studioId,
+    input.teacherMembershipId,
+    course.teacherMembershipId
+  );
+  const durationMin = course.durationMin;
 
   const startsOn = new Date(`${input.startsOn}T00:00:00Z`);
   const until = new Date(`${input.until}T00:00:00Z`);
@@ -327,7 +376,7 @@ export async function createSeries(
 
   const { timezone, hours } = await getStudioSettings(pool, studioId);
   const start = minutes(input.startTime);
-  const end = start + input.durationMin;
+  const end = start + durationMin;
 
   for (const weekday of input.weekdays) {
     const hour = hours.find((item) => item.weekday === weekday);
@@ -360,7 +409,7 @@ export async function createSeries(
       const { rows } = await pool.query<{ starts_at: Date; ends_at: Date }>(
         `SELECT (($1::date + $2::time) AT TIME ZONE $3) AS starts_at,
                 (($1::date + $2::time) AT TIME ZONE $3) + make_interval(mins => $4) AS ends_at`,
-        [date, input.startTime, timezone, input.durationMin]
+        [date, input.startTime, timezone, durationMin]
       );
       return {
         date,
@@ -375,7 +424,7 @@ export async function createSeries(
       pool,
       studioId,
       input.roomId,
-      input.teacherMembershipId,
+      teacherMembershipId,
       slot.startsAt,
       slot.endsAt
     );
@@ -394,10 +443,10 @@ export async function createSeries(
         studioId,
         input.courseId,
         input.roomId,
-        input.teacherMembershipId,
+        teacherMembershipId,
         input.weekdays,
         input.startTime,
-        input.durationMin,
+        durationMin,
         input.startsOn,
         input.until
       ]
@@ -411,7 +460,7 @@ export async function createSeries(
         seriesId,
         courseId: input.courseId,
         roomId: input.roomId,
-        teacherMembershipId: input.teacherMembershipId,
+        teacherMembershipId,
         startsAt: slot.startsAt,
         endsAt: slot.endsAt
       });
@@ -472,7 +521,7 @@ export async function updateSession(
   pool: Pool,
   studioId: string,
   sessionId: string,
-  patch: { roomId?: string; teacherMembershipId?: string; startsAt?: string; durationMin?: number }
+  patch: { roomId?: string; teacherMembershipId?: string; startsAt?: string }
 ): Promise<SessionView> {
   const { rows } = await pool.query<{
     course_id: string;
@@ -493,12 +542,12 @@ export async function updateSession(
   const roomId = patch.roomId ?? current.room_id;
   const teacherMembershipId = patch.teacherMembershipId ?? current.teacher_membership_id;
   const startsAt = patch.startsAt ?? current.starts_at.toISOString();
-  const durationMin =
-    patch.durationMin ??
-    Math.round((current.ends_at.getTime() - current.starts_at.getTime()) / 60_000);
+  const durationMin = Math.round((current.ends_at.getTime() - current.starts_at.getTime()) / 60_000);
   const endsAt = new Date(new Date(startsAt).getTime() + durationMin * 60_000).toISOString();
 
-  await assertRefs(pool, studioId, current.course_id, roomId, teacherMembershipId);
+  await getCourseRefs(pool, studioId, current.course_id);
+  await assertRoom(pool, studioId, roomId);
+  await assertTeacher(pool, studioId, teacherMembershipId);
 
   const conflict = await findConflict(pool, studioId, roomId, teacherMembershipId, startsAt, endsAt, sessionId);
   if (conflict) conflictError(conflict, roomId);
@@ -520,7 +569,7 @@ export async function updateSession(
     from: startsAt.slice(0, 10),
     to: startsAt.slice(0, 10)
   });
-  const found = updated.find((item) => item.id === sessionId);
+  const found = updated.find((item) => item.sessionId === sessionId);
   if (!found) {
     throw new AppError(404, 'NOT_FOUND', 'Сеанс не найден');
   }

@@ -13,35 +13,25 @@ import {
   updateSession
 } from './repository';
 
-const duration = z.union([
-  z.literal(45),
-  z.literal(60),
-  z.literal(75),
-  z.literal(90),
-  z.literal(120)
-]);
-
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ожидается дата YYYY-MM-DD');
 const timeOnly = z.string().regex(/^\d{2}:\d{2}$/, 'Ожидается время HH:MM');
 
 const singleBody = z.object({
   courseId: z.string().uuid(),
   roomId: z.string().uuid(),
-  teacherMembershipId: z.string().uuid(),
-  startsAt: z.string().datetime({ offset: true }),
-  durationMin: duration
+  teacherMembershipId: z.string().uuid().optional(),
+  startsAt: z.string().datetime({ offset: true })
 });
 
 const seriesBody = z.object({
   courseId: z.string().uuid(),
   roomId: z.string().uuid(),
-  teacherMembershipId: z.string().uuid(),
+  teacherMembershipId: z.string().uuid().optional(),
   series: z.object({
     weekdays: z.array(z.number().int().min(1).max(7)).min(1),
     startTime: timeOnly,
     startsOn: dateOnly,
-    until: dateOnly,
-    durationMin: duration
+    until: dateOnly
   })
 });
 
@@ -49,8 +39,7 @@ const patchBody = z
   .object({
     roomId: z.string().uuid().optional(),
     teacherMembershipId: z.string().uuid().optional(),
-    startsAt: z.string().datetime({ offset: true }).optional(),
-    durationMin: duration.optional()
+    startsAt: z.string().datetime({ offset: true }).optional()
   })
   .refine((value) => Object.keys(value).length > 0, { message: 'Нет полей для изменения' });
 
@@ -70,6 +59,22 @@ function fieldErrors(error: z.ZodError): Record<string, string> {
   return result;
 }
 
+function durationFieldErrors(body: unknown): Record<string, string> | null {
+  if (typeof body !== 'object' || body === null) {
+    return null;
+  }
+  const record = body as Record<string, unknown>;
+  const fields: Record<string, string> = {};
+  if ('durationMin' in record) {
+    fields.durationMin = 'Длительность задаётся курсом';
+  }
+  const series = record.series;
+  if (typeof series === 'object' && series !== null && 'durationMin' in series) {
+    fields['series.durationMin'] = 'Длительность задаётся курсом';
+  }
+  return Object.keys(fields).length > 0 ? fields : null;
+}
+
 export async function scheduleRoutes(app: FastifyInstance, options: { pool: Pool }): Promise<void> {
   const { pool } = options;
 
@@ -84,7 +89,7 @@ export async function scheduleRoutes(app: FastifyInstance, options: { pool: Pool
       if (!parsed.success) {
         return reply
           .code(422)
-          .send(errorBody('VALIDATION', 'Некорректные параметры', fieldErrors(parsed.error)));
+          .send(errorBody('VALIDATION', 'Некорректные параметры', { fields: fieldErrors(parsed.error) }));
       }
 
       const items = await listSchedule(pool, membership.studioId, parsed.data);
@@ -100,6 +105,12 @@ export async function scheduleRoutes(app: FastifyInstance, options: { pool: Pool
       if (!membership) return;
 
       const body = request.body as Record<string, unknown>;
+      const forbidden = durationFieldErrors(body);
+      if (forbidden) {
+        return reply
+          .code(422)
+          .send(errorBody('VALIDATION', 'Некорректные данные', { fields: forbidden }));
+      }
       const isSeries = typeof body === 'object' && body !== null && 'series' in body;
 
       if (isSeries) {
@@ -107,7 +118,7 @@ export async function scheduleRoutes(app: FastifyInstance, options: { pool: Pool
         if (!parsed.success) {
           return reply
             .code(422)
-            .send(errorBody('VALIDATION', 'Некорректные данные', fieldErrors(parsed.error)));
+            .send(errorBody('VALIDATION', 'Некорректные данные', { fields: fieldErrors(parsed.error) }));
         }
         const result = await createSeries(pool, membership.studioId, {
           courseId: parsed.data.courseId,
@@ -122,7 +133,7 @@ export async function scheduleRoutes(app: FastifyInstance, options: { pool: Pool
       if (!parsed.success) {
         return reply
           .code(422)
-          .send(errorBody('VALIDATION', 'Некорректные данные', fieldErrors(parsed.error)));
+          .send(errorBody('VALIDATION', 'Некорректные данные', { fields: fieldErrors(parsed.error) }));
       }
       const result = await createSingleSession(pool, membership.studioId, parsed.data);
       return reply.code(201).send(result);
@@ -136,11 +147,18 @@ export async function scheduleRoutes(app: FastifyInstance, options: { pool: Pool
       const membership = await requireAccess(pool, request, reply, 'schedule.write');
       if (!membership) return;
 
+      const forbidden = durationFieldErrors(request.body);
+      if (forbidden) {
+        return reply
+          .code(422)
+          .send(errorBody('VALIDATION', 'Некорректные данные', { fields: forbidden }));
+      }
+
       const parsed = patchBody.safeParse(request.body);
       if (!parsed.success) {
         return reply
           .code(422)
-          .send(errorBody('VALIDATION', 'Некорректные данные', fieldErrors(parsed.error)));
+          .send(errorBody('VALIDATION', 'Некорректные данные', { fields: fieldErrors(parsed.error) }));
       }
 
       const sessionId = (request.params as { sessionId: string }).sessionId;

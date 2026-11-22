@@ -17,7 +17,7 @@ const PERMISSIONS: Record<Action, Role[]> = {
   'studio.read': ['owner', 'admin', 'curator', 'teacher', 'assistant', 'student'],
   'studio.write': ['owner', 'admin'],
   'studio.archive': ['owner'],
-  'members.read': ['owner', 'admin', 'curator'],
+  'members.read': ['owner', 'admin'],
   'members.write': ['owner', 'admin'],
   'students.write': ['owner', 'admin', 'curator'],
   'rooms.write': ['owner', 'admin', 'curator'],

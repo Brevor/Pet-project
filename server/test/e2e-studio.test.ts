@@ -137,8 +137,7 @@ test('сквозной сценарий §12: студия, персонал, з
         weekdays: [1, 3],
         startTime: '18:00',
         startsOn: '2027-02-01',
-        until: '2027-02-14',
-        durationMin: 90
+        until: '2027-02-14'
       }
     }
   });
@@ -153,8 +152,7 @@ test('сквозной сценарий §12: студия, персонал, з
       courseId: course.json().course.id,
       roomId: roomA.json().room.id,
       teacherMembershipId: teacherId,
-      startsAt: '2027-02-01T18:30:00+03:00',
-      durationMin: 60
+      startsAt: '2027-02-01T18:30:00+03:00'
     }
   });
   assert.equal(conflict.statusCode, 409);
@@ -176,8 +174,7 @@ test('сквозной сценарий §12: студия, персонал, з
       courseId: course.json().course.id,
       roomId: roomB.json().room.id,
       teacherMembershipId: teacherId,
-      startsAt: '2027-02-03T10:00:00+03:00',
-      durationMin: 60
+      startsAt: '2027-02-03T10:00:00+03:00'
     }
   });
   assert.equal(teacherAttempt.statusCode, 403);

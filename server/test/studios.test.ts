@@ -298,3 +298,86 @@ test('ученик создаётся с временным паролем и м
   });
   assert.equal(login.statusCode, 200);
 });
+
+test('смена ролей: свои роли и владелец защищены', { skip }, async () => {
+  const owner = await registerUser();
+  const studio = await createStudio(owner.token);
+  const admin = await registerUser();
+  const member = await registerUser();
+
+  const adminCreated = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studio.id}/members`,
+    headers: auth(owner.token),
+    payload: { email: admin.email, roles: ['admin'] }
+  });
+  const adminMembershipId = adminCreated.json().membership.membershipId as string;
+
+  const memberCreated = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studio.id}/members`,
+    headers: auth(owner.token),
+    payload: { email: member.email, roles: ['teacher'] }
+  });
+  const memberMembershipId = memberCreated.json().membership.membershipId as string;
+
+  const list = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studio.id}/members`,
+    headers: auth(owner.token)
+  });
+  const ownerMembershipId = list
+    .json()
+    .items.find((row: { email: string }) => row.email === owner.email).membershipId as string;
+
+  const selfAsAdmin = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${studio.id}/members/${adminMembershipId}`,
+    headers: auth(admin.token),
+    payload: { roles: ['admin', 'teacher'] }
+  });
+  assert.equal(selfAsAdmin.statusCode, 403);
+  assert.equal(selfAsAdmin.json().error.code, 'FORBIDDEN');
+
+  const selfAsOwner = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${studio.id}/members/${ownerMembershipId}`,
+    headers: auth(owner.token),
+    payload: { roles: ['owner', 'admin'] }
+  });
+  assert.equal(selfAsOwner.statusCode, 403);
+
+  const adminOnOwner = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${studio.id}/members/${ownerMembershipId}`,
+    headers: auth(admin.token),
+    payload: { roles: ['admin'] }
+  });
+  assert.equal(adminOnOwner.statusCode, 403);
+
+  const adminGrantsOwner = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${studio.id}/members/${memberMembershipId}`,
+    headers: auth(admin.token),
+    payload: { roles: ['owner'] }
+  });
+  assert.equal(adminGrantsOwner.statusCode, 403);
+
+  const ownerGrantsOwner = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${studio.id}/members/${memberMembershipId}`,
+    headers: auth(owner.token),
+    payload: { roles: ['owner'] }
+  });
+  assert.equal(ownerGrantsOwner.statusCode, 403);
+  assert.equal(ownerGrantsOwner.json().error.code, 'FORBIDDEN');
+
+  const normal = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${studio.id}/members/${memberMembershipId}`,
+    headers: auth(admin.token),
+    payload: { roles: ['teacher', 'curator'] }
+  });
+  assert.equal(normal.statusCode, 200);
+  assert.deepEqual(normal.json().membership.roles, ['curator', 'teacher']);
+});

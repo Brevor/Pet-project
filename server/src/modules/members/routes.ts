@@ -11,6 +11,7 @@ import {
   addMember,
   findMembership,
   listMembers,
+  listTeachers,
   removeMember,
   replaceRoles,
   transferOwnership
@@ -58,14 +59,27 @@ export async function membersRoutes(
     '/studios/:studioId/members',
     { preHandler: [app.authenticate] },
     async (request, reply) => {
-      const membership = await requireAccess(pool, request, reply, 'members.read');
+      const query = request.query as { role?: string; q?: string };
+      const action = query.role === 'student' ? 'students.write' : 'members.read';
+      const membership = await requireAccess(pool, request, reply, action);
       if (!membership) return;
 
-      const query = request.query as { role?: string; q?: string };
       const items = await listMembers(pool, membership.studioId, {
         role: query.role,
         q: query.q
       });
+      return { items, total: items.length };
+    }
+  );
+
+  app.get(
+    '/studios/:studioId/teachers',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const membership = await requireAccess(pool, request, reply, 'schedule.read');
+      if (!membership) return;
+
+      const items = await listTeachers(pool, membership.studioId);
       return { items, total: items.length };
     }
   );
@@ -164,8 +178,25 @@ export async function membersRoutes(
       if (!target) {
         return reply.code(404).send(errorBody('NOT_FOUND', 'Участник не найден'));
       }
-      if (target.roles.includes('owner') && !membership.roles.includes('owner')) {
+
+      const requesterIsOwner = membership.roles.includes('owner');
+      const targetIsOwner = target.roles.includes('owner');
+
+      if (targetId === membership.membershipId) {
+        return reply.code(403).send(errorBody('FORBIDDEN', 'Свои роли менять нельзя'));
+      }
+      if (targetIsOwner && !requesterIsOwner) {
         return reply.code(403).send(errorBody('FORBIDDEN', 'Ролями владельца управляет только владелец'));
+      }
+      if (parsed.data.roles.includes('owner') && !targetIsOwner) {
+        return reply
+          .code(403)
+          .send(errorBody('FORBIDDEN', 'Владение передаётся только через owner-transfer'));
+      }
+      if (targetIsOwner && !parsed.data.roles.includes('owner')) {
+        return reply
+          .code(409)
+          .send(errorBody('LAST_OWNER', 'В студии должен остаться владелец'));
       }
 
       await replaceRoles(pool, membership.studioId, targetId, parsed.data.roles);

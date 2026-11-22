@@ -65,6 +65,28 @@ export interface MembershipRecord {
   status: string;
 }
 
+export interface TeacherRow {
+  membershipId: string;
+  displayName: string;
+}
+
+export async function listTeachers(pool: Pool, studioId: string): Promise<TeacherRow[]> {
+  const { rows } = await pool.query<{ membership_id: string; display_name: string }>(
+    `SELECT m.id AS membership_id,
+            coalesce(u.display_name, u.email) AS display_name
+       FROM memberships m
+       JOIN users u ON u.id = m.user_id
+       JOIN membership_roles mr ON mr.membership_id = m.id AND mr.role = 'teacher'
+      WHERE m.studio_id = $1 AND m.status = 'active'
+      ORDER BY display_name`,
+    [studioId]
+  );
+  return rows.map((row) => ({
+    membershipId: row.membership_id,
+    displayName: row.display_name
+  }));
+}
+
 export async function findMembership(
   pool: Pool,
   studioId: string,
@@ -162,6 +184,10 @@ export async function replaceRoles(
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
+    const violation = error as { code?: string; constraint?: string };
+    if (violation.code === '23505' && violation.constraint === 'membership_single_owner') {
+      throw new AppError(409, 'LAST_OWNER', 'В студии должен остаться ровно один владелец');
+    }
     throw error;
   } finally {
     client.release();

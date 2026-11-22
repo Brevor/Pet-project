@@ -127,7 +127,7 @@ export function ScheduleTab({ studioId }: { studioId: string }) {
   async function cancelSession(session: SessionItem) {
     setError('');
     try {
-      await api(`/studios/${studioId}/sessions/${session.id}/cancel`, { method: 'POST' });
+      await api(`/studios/${studioId}/sessions/${session.sessionId}/cancel`, { method: 'POST' });
       await loadSchedule();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Не удалось отменить сеанс');
@@ -138,7 +138,7 @@ export function ScheduleTab({ studioId }: { studioId: string }) {
     if (!confirm('Удалить сеанс?')) return;
     setError('');
     try {
-      await api(`/studios/${studioId}/sessions/${session.id}`, { method: 'DELETE' });
+      await api(`/studios/${studioId}/sessions/${session.sessionId}`, { method: 'DELETE' });
       await loadSchedule();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Не удалось удалить сеанс');
@@ -378,7 +378,7 @@ export function ScheduleTab({ studioId }: { studioId: string }) {
             <h3 className="text-sm font-semibold text-slate-700">{day}</h3>
             <ul className="mt-2 divide-y divide-slate-100">
               {items.map((session) => (
-                <li key={session.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
+                <li key={session.sessionId} className="flex flex-wrap items-center gap-3 py-2 text-sm">
                   <span className="w-14 font-mono text-slate-600">{timeLabel(session.startsAt)}</span>
                   <span className="font-medium">{session.courseName}</span>
                   <span className="text-slate-500">{session.roomName}</span>
