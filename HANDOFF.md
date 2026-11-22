@@ -79,3 +79,14 @@ node server/dist/test/<suite>.test.js   # нужен DATABASE_URL
 - `pnpm run` не может спавнить процессы в песочнице — тесты запускаются напрямую через node.
 - `vite build` локально не выполняется (esbuild не спавнится), сборка клиента — только в Docker.
 - Git push из агентской среды недоступен; ветка пушится вручную.
+## 8. Статус после Architect (2026-11-22)
+
+- `doc/architecture.md` обновлён: `studios.referral_code` (уникальный индекс, генерация, смена),
+  сценарии «Регистрация владельца» и «Присоединение по ссылке», список публичных маршрутов,
+  риск перебора кодов, трассировка REF-1…REF-8; Q7 убран из «Требует решения».
+- `doc/contracts.md` обновлён: `PATCH /studios/{id}/referral`, `GET /join/{code}`,
+  `POST /join/{code}/register`, `POST /join/{code}/join`, коды `INVALID_REFERRAL`,
+  `REFERRAL_TAKEN`, `REFERRAL_NOT_FOUND`, карта прав и публичные исключения.
+- Изменение схемы (`studios.referral_code`) — **Decision Gate**: нужно подтверждение пользователя.
+- Дальше: TechLead — декомпозиция (миграция, публичные маршруты, онбординг и страница `/join/:code`),
+  затем Coder.

@@ -9,7 +9,7 @@
 ## 1. Общие правила
 
 - База: `/api/v1`. Формат — JSON, `Content-Type: application/json`.
-- Аутентификация: `Authorization: Bearer <jwt>` для всех эндпоинтов, кроме `/auth/register` и `/auth/login`.
+- Аутентификация: `Authorization: Bearer <jwt>` для всех эндпоинтов, кроме публичных: `/health`, `/auth/register`, `/auth/login`, `/join/{code}`, `/join/{code}/register`.
 - Идентификаторы — UUID v4, строки.
 - Моменты времени — ISO 8601 с офсетом (`2026-11-28T12:00:00+03:00`).
   Рабочие часы и время начала серии — локальное время студии без даты (`"18:00"`).
@@ -91,6 +91,49 @@
 
 `204`, пустое тело. Право: `studio.archive` (только owner). После архивации студия доступна только owner.
 
+### PATCH /studios/{studioId}/referral
+
+Смена кода реферальной ссылки (REF-3).
+
+```json
+{ "code": "dance-lab" }
+```
+
+`200` → `{ "referralCode": "dance-lab", "referralUrl": "/join/dance-lab" }`
+Право: `studio.write`. После смены старый код отвечает 404 (REF-4), участники остаются в студии.
+
+| Код | Когда |
+|---|---|
+| `422 INVALID_REFERRAL` | пусто, короче 3 или длиннее 32, недопустимые символы, зарезервирован |
+| `409 REFERRAL_TAKEN` | код занят другой студией |
+| `403 FORBIDDEN` | роль не owner/admin |
+
+### GET /join/{code} — публичный
+
+Проверка ссылки перед регистрацией (REF-5).
+
+`200` → `{ "studio": { "id": "…", "name": "Dance Lab", "referralCode": "dance-lab" } }`
+`404 REFERRAL_NOT_FOUND` — код не найден.
+
+### POST /join/{code}/register — публичный
+
+Регистрация ученика по ссылке (REF-5). Пользователь не выбирает роль — всегда `student` (REF-7).
+
+```json
+{ "email": "student@example.com", "password": "…", "displayName": "Алиса" }
+```
+
+`201` → `{ "token": "…", "expiresIn": 86400, "user": { … }, "studio": { … },
+"membership": { "roles": ["student"] } }`
+
+Ошибки: `404 REFERRAL_NOT_FOUND`, `409 EMAIL_TAKEN`, `422 VALIDATION`.
+
+### POST /join/{code}/join — с JWT
+
+Присоединение уже авторизованного пользователя (REF-6).
+
+`201` → `{ "membership": { … }, "studio": { … } }`
+Ошибки: `404 REFERRAL_NOT_FOUND`, `409 ALREADY_MEMBER`, `401 UNAUTHORIZED`.
 ### DELETE /studios/{studioId}
 
 Не поддерживается: только архивация (STU-6).
@@ -305,6 +348,9 @@
 | `POST/PATCH/DELETE /studios/{id}/members…` | `members.write` |
 | `POST …/members` с `roles:["student"]` | `students.write` |
 | `POST …/owner-transfer` | `studio.archive` (только owner) |
+| `PATCH /studios/{id}/referral` | `studio.write` |
+| `GET /join/{code}`, `POST /join/{code}/register` | без авторизации |
+| `POST /join/{code}/join` | любой авторизованный пользователь |
 | `GET /studios/{id}/rooms`, `/courses`, `/schedule` | `schedule.read` |
 | `POST/PATCH/DELETE` залов и курсов | `rooms.write` / `courses.write` |
 | `POST/PATCH/DELETE` сеансов и серий | `schedule.write` |
@@ -332,15 +378,15 @@
 | `OUTSIDE_WORKING_HOURS` | 422 | сеанс вне рабочих часов |
 | `DATE_RANGE_TOO_LONG` | 422 | слишком длинная серия или диапазон |
 | `UNKNOWN_ROLE` | 422 | роль вне набора |
+| `INVALID_REFERRAL` | 422 | недопустимый код реферальной ссылки |
+| `REFERRAL_TAKEN` | 409 | код занят другой студией |
+| `REFERRAL_NOT_FOUND` | 404 | код не найден |
 
 ## 10. Требует решения
 
-**Q7 — присоединение ученика без приглашений.** Контракт `POST /studios/{id}/join` **не зафиксирован**.
-Варианты, которые нельзя реализовывать до ответа:
-
-- `POST /studios/join` с кодом студии в теле;
-- публичная ссылка `/join/{code}` с подтверждением администратора;
-- выбор студии из списка зарегистрированных.
+**Q7 закрыт** (2026-11-22): присоединение — по реферальной ссылке студии, см.
+`PATCH /studios/{id}/referral`, `GET /join/{code}`, `POST /join/{code}/register`,
+`POST /join/{code}/join`.
 
 **Q3** (участие в нескольких студиях) на контракты не влияет: студия всегда в пути запроса.
 **Q8** (роль «родитель») добавит значение в `roles` и строку в матрицу прав.
