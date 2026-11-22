@@ -1,10 +1,24 @@
 # Контракты API: ядро студии
 
-> **Версия:** 1.0.0
+> **Версия:** 1.1.0
 > **Дата:** 2026-11-22
 > **Роль:** Architect
-> **Основание:** `doc/architecture.md`, `doc/requirements/studio.md` (approved)
-> **Статус:** проект контракта, реализация не начата
+> **Основание:** `doc/architecture.md` (v1.1.0), `doc/requirements/studio.md` (approved, v0.4.0)
+> **Статус:** действует; соответствует реализации M0–M7. Изменения 1.1.0 (§0) ещё не реализованы
+
+## 0. Изменения версии 1.1.0
+
+| # | Что | Раздел | Требования |
+|---|---|---|---|
+| 1 | У курса появился преподаватель по умолчанию: `teacherMembershipId` (nullable) в запросах, `teacherMembershipId` + `teacherName` в ответах | §6 | CLS-7 |
+| 2 | `POST /sessions`, `PATCH /sessions/{sessionId}` больше не принимают `durationMin`; передача → 422 `VALIDATION` | §7 | CLS-8, SCH-1, SCH-2, SCH-10 |
+| 3 | `durationMin` в серии тоже убран; длительность серии — снимок длительности курса | §7 | SCH-2, CLS-8 |
+| 4 | `teacherMembershipId` в сеансе необязателен: подставляется преподаватель курса | §7 | CLS-7 |
+| 5 | `PATCH /sessions` при переносе сохраняет собственную длительность сеанса | §7 | CLS-8 |
+| 6 | `GET /studios/{id}/teachers` — справочник преподавателей для фильтра и формы | §4 | SCH-6, ROL-12 |
+| 7 | `members.read` сужен до owner/admin; `GET /members?role=student` доступен по `students.write` | §4, §8 | ROL-7, ROL-12 |
+| 8 | Уточнены правила `PATCH /members`: владельца выдаёт и снимает только owner; собственный набор ролей менять нельзя | §4 | ROL-6, STF-11, ACC-9 |
+| 9 | Код `422 NOT_A_TEACHER` добавлен в общий список; `422 INVALID_DURATION` больше не возвращается | §7, §9 | CLS-7, SCH-10 |
 
 ## 1. Общие правила
 
@@ -23,6 +37,8 @@
 - Студия всегда в пути (`/studios/{studioId}/…`); несовпадение членства — 403, чужая сущность — 404.
 - Идемпотентность POST не гарантируется; повторная отправка формы может создать дубль (кроме мест,
   где явно указан 409 по уникальности).
+- Неизвестные поля игнорируются, **кроме** перечисленных запрещённых (`durationMin` в §7):
+  запрещённое поле — 422 `VALIDATION`, а не молчаливое игнорирование.
 
 ## 2. Аутентификация
 
@@ -134,6 +150,7 @@
 
 `201` → `{ "membership": { … }, "studio": { … } }`
 Ошибки: `404 REFERRAL_NOT_FOUND`, `409 ALREADY_MEMBER`, `401 UNAUTHORIZED`.
+
 ### DELETE /studios/{studioId}
 
 Не поддерживается: только архивация (STU-6).
@@ -154,7 +171,28 @@
 }
 ```
 
-Право: `members.read`.
+Право: `members.read` — только **owner, admin**. Исключение: фильтр `?role=student` доступен
+по праву `students.write` (owner, admin, curator) — куратор ведёт учеников, но не видит персонал
+(ROL-7, ROL-12). Для расписания справочник преподавателей — отдельный эндпоинт ниже.
+
+### GET /studios/{studioId}/teachers
+
+Справочник преподавателей для фильтра расписания и формы сеанса (SCH-1, SCH-6). Только активные
+участники с ролью `teacher`. Email не отдаётся.
+
+Право: `schedule.read` — доступно всем шести ролям (ROL-8…ROL-10).
+
+`200` →
+
+```json
+{
+  "items": [ { "membershipId": "…", "displayName": "Анна Ковалёва" } ],
+  "total": 1
+}
+```
+
+`displayName` — `display_name` аккаунта, при отсутствии — email (тот же fallback, что `teacherName`
+в расписании).
 
 ### POST /studios/{studioId}/members
 
@@ -171,10 +209,11 @@
 | `404 USER_NOT_FOUND` | аккаунт с таким email не зарегистрирован (STF-2) |
 | `409 ALREADY_MEMBER` | участник уже в студии (STF-3) |
 | `422 UNKNOWN_ROLE` | роль вне фиксированного набора |
-| `403 FORBIDDEN` | нет права `members.write` (сотрудники) или `students.write` (только `student`) |
+| `403 FORBIDDEN` | нет права `members.write` (сотрудники) или `students.write` (только `student`); `owner` в наборе ролей может указать только владелец |
 
 Особый случай: `roles: ["student"]` требует права `students.write` и разрешает создать аккаунт,
-если его нет (STF-9) — в этом случае письмо об установке пароля отправляется, роли в письме нет.
+если его нет (STF-9) — в этом случае временный пароль возвращается в ответе (`temporaryPassword`),
+роли в нём нет.
 
 ### PATCH /studios/{studioId}/members/{membershipId}
 
@@ -182,12 +221,28 @@
 { "roles": ["teacher", "curator"] }
 ```
 
-`200` → обновлённое членство. Право: `members.write` (роли владельца меняет только `owner`).
-Ошибки: `422 UNKNOWN_ROLE`, `409 LAST_OWNER` (попытка снять единственного `owner`), `403 FORBIDDEN`.
+`200` → обновлённое членство. Набор ролей заменяется целиком, минимум одна роль.
+Право: `members.write` (owner, admin).
+
+| Код | Когда |
+|---|---|
+| `422 UNKNOWN_ROLE` | роль вне набора |
+| `409 LAST_OWNER` | попытка снять роль `owner` с текущего владельца |
+| `403 FORBIDDEN` | администратор меняет набор ролей владельца, добавляет или убирает `owner`; участник меняет собственный набор ролей (ACC-9) |
+
+Передача владения через этот эндпоинт **не выполняется**: `owner` в наборе от администратора —
+403, смена владельца — только `POST /owner-transfer`. Попытка выдать второго `owner` не должна
+доходить до БД (частичный уникальный индекс) и не должна возвращать 500.
+
+Себе роли не назначаются (ACC-9): `membershipId` из пути совпадает с членством запроса → 403.
+Роли владельца меняет только владелец, роли остальных — владелец или администратор.
 
 ### DELETE /studios/{studioId}/members/{membershipId}
 
 `204`. Аккаунт и прошлые сеансы сохраняются (STF-6). Ошибки: `409 LAST_OWNER`, `403 FORBIDDEN`.
+Если участник — преподаватель по умолчанию у курсов, ссылка в курсах обнуляется (миграция 006).
+Удаление преподавателя, у которого есть сеансы или серии, отклоняется ограничением БД — в Фазе 1
+сначала переназначают сеансы.
 
 ### POST /studios/{studioId}/owner-transfer
 
@@ -223,6 +278,7 @@
 ### PATCH /studios/{studioId}/rooms/{roomId}
 
 `{ "name"?, "capacity"?, "description"?, "archived"? }` → `200`. Архивация — `"archived": true`.
+Право: `rooms.write`. Форма редактирования в UI — ROM-7 (§14 architecture).
 
 ### DELETE /studios/{studioId}/rooms/{roomId}
 
@@ -235,25 +291,45 @@
 `?includeArchived=false&q=` → `200`
 
 ```json
-{ "items": [ { "id": "…", "name": "Hip-Hop · начинающие", "direction": "Hip-Hop",
-               "level": "beginner", "kind": "group", "defaultDurationMin": 90,
-               "capacity": 14, "archived": false } ], "total": 1 }
+{
+  "items": [
+    { "id": "…", "name": "Hip-Hop · начинающие", "direction": "Hip-Hop",
+      "level": "beginner", "kind": "group", "defaultDurationMin": 90,
+      "capacity": 14, "teacherMembershipId": "…", "teacherName": "Анна Ковалёва",
+      "archived": false }
+  ],
+  "total": 1
+}
 ```
+
+`teacherMembershipId` и `teacherName` — `null`, если преподаватель по умолчанию не задан (CLS-7).
+Право: `schedule.read`.
 
 ### POST /studios/{studioId}/courses
 
 ```json
 { "name": "Hip-Hop · начинающие", "direction": "Hip-Hop", "level": "beginner",
-  "kind": "group", "defaultDurationMin": 90, "capacity": 14 }
+  "kind": "group", "defaultDurationMin": 90, "capacity": 14,
+  "teacherMembershipId": "…" }
 ```
 
-`201`. Право: `courses.write`.
-Ошибки: `409 COURSE_NAME_TAKEN`, `422 VALIDATION` (длина имени 2–140, уровень, тип, длительность).
+`teacherMembershipId` необязателен (`uuid | null`, по умолчанию `null`). Право: `courses.write`.
+
+`201` → `{ "course": { … } }`.
+Ошибки: `409 COURSE_NAME_TAKEN`, `422 VALIDATION` (длина имени 2–140, уровень, тип, длительность),
+`422 NOT_A_TEACHER` (членство не в этой студии, неактивно или без роли `teacher`).
 `defaultDurationMin` — только 45, 60, 75, 90, 120 (CLS-5).
 
 ### PATCH /studios/{studioId}/courses/{courseId}
 
-`{ "name"?, "direction"?, "level"?, "kind"?, "defaultDurationMin"?, "capacity"?, "archived"? }` → `200`.
+`{ "name"?, "direction"?, "level"?, "kind"?, "defaultDurationMin"?, "capacity"?,
+"teacherMembershipId"?, "archived"? }` → `200`.
+
+- `teacherMembershipId: null` — **снять** преподавателя по умолчанию;
+- поле отсутствует — не менять;
+- смена `defaultDurationMin` и `teacherMembershipId` **не переписывает** существующие сеансы
+  (CLS-8): новые сеансы берут новые значения, старые сохраняют свои.
+- Ошибки: `422 NOT_A_TEACHER`, `422 VALIDATION`, `409 COURSE_NAME_TAKEN`.
 
 ### DELETE /studios/{studioId}/courses/{courseId}
 
@@ -280,18 +356,22 @@
 }
 ```
 
+> Идентификатор сеанса — `sessionId`, как в `POST /sessions` и `POST …/cancel`. В реализации M5
+> поле называется `id`; при реализации 1.1.0 переименовать в ответе и в клиенте
+> (`ScheduleTab`, `types.ts`). Это единственное расхождение списка расписания с контрактом 1.0.0.
+
 Право: `schedule.read` — доступно всем шести ролям (SCH-7). Диапазон не больше 92 дней:
 `422 DATE_RANGE_TOO_LONG`.
 
 ### POST /studios/{studioId}/sessions
 
-Два варианта тела — разовый сеанс и серия.
+Два варианта тела — разовый сеанс и серия. **`durationMin` в теле нет ни в одном варианте.**
 
 Разовый:
 
 ```json
 { "courseId": "…", "roomId": "…", "teacherMembershipId": "…",
-  "startsAt": "2026-11-28T12:00:00+03:00", "durationMin": 60 }
+  "startsAt": "2026-11-28T12:00:00+03:00" }
 ```
 
 Серия:
@@ -299,10 +379,22 @@
 ```json
 { "courseId": "…", "roomId": "…", "teacherMembershipId": "…",
   "series": { "weekdays": [1, 3], "startTime": "18:00",
-              "startsOn": "2026-11-23", "until": "2026-12-31", "durationMin": 90 } }
+              "startsOn": "2026-11-23", "until": "2026-12-31" } }
 ```
 
-`201` → `{ "created": 12, "seriesId": "…", "items": [ { "sessionId": "…", "startsAt": "…" } ] }`
+Правила:
+
+- длительность сеанса = `courses.defaultDurationMin` на момент создания (CLS-8);
+  `endsAt` вычисляет сервер;
+- `durationMin` или `series.durationMin` в теле → `422 VALIDATION` с
+  `details.fields.durationMin` (или `series.durationMin`); поле не игнорируется молча (SCH-10);
+- `teacherMembershipId` необязателен: если не передан — берётся `courses.teacherMembershipId`;
+  если преподавателя нет ни в теле, ни у курса → `422 VALIDATION`, `details.fields.teacherMembershipId`;
+  если преподаватель пришёл из курса и не проходит проверку (неактивен, без роли) → `422 NOT_A_TEACHER`;
+- явно переданный преподаватель главнее преподавателя курса и может быть заменён (CLS-7);
+- для серии `class_series.duration_min` = снимок длительности курса.
+
+`201` → `{ "created": 12, "seriesId": "…", "items": [ { "sessionId": "…", "startsAt": "…", "endsAt": "…" } ] }`
 Разовый ответ: `created: 1`, `seriesId: null`.
 
 Право: `schedule.write`.
@@ -313,16 +405,25 @@
 | `409 TEACHER_CONFLICT` | преподаватель занят (SCH-3) |
 | `422 OUTSIDE_WORKING_HOURS` | сеанс вне рабочих часов или в выходной (SCH-5) |
 | `422 DATE_RANGE_TOO_LONG` | `until` позже `startsOn + 52 недели` |
-| `422 INVALID_DURATION` | длительность вне 45–120 |
 | `422 ARCHIVED_COURSE` / `ARCHIVED_ROOM` | выбран архивный объект |
-| `422 NOT_A_TEACHER` | у членства нет роли `teacher` |
+| `422 NOT_A_TEACHER` | у членства нет роли `teacher` (или оно неактивно) |
+| `422 VALIDATION` | передан `durationMin`, нет преподавателя, прочие поля |
+
+`422 INVALID_DURATION` больше не возвращается: длительность всегда из набора курса (45/60/75/90/120).
 
 При серии конфликт проверяется на всех генерируемых датах, транзакция откатывается целиком.
 
 ### PATCH /studios/{studioId}/sessions/{sessionId}
 
-`{ "roomId"?, "teacherMembershipId"?, "startsAt"?, "durationMin"? }` → `200`.
-Те же ошибки конфликтов. Правка одного вхождения не меняет серию.
+`{ "roomId"?, "teacherMembershipId"?, "startsAt"? }` → `200`.
+
+- `durationMin` → `422 VALIDATION`, `details.fields.durationMin` (SCH-10);
+- `teacherMembershipId: null` → `422 VALIDATION`: у сеанса преподаватель обязателен;
+- при переносе `endsAt = новое начало + собственная длительность сеанса` (бывшая разница
+  `endsAt − startsAt`), а не текущая длительность курса — правка не переписывает длительность (CLS-8);
+- правка одного вхождения не меняет серию.
+
+Те же ошибки конфликтов, что у создания.
 
 ### POST /studios/{studioId}/sessions/{sessionId}/cancel
 
@@ -344,7 +445,8 @@
 | `GET /studios/{id}`, `/me` | `studio.read` |
 | `PATCH /studios/{id}` | `studio.write` |
 | `POST /studios/{id}/archive` | `studio.archive` |
-| `GET /studios/{id}/members` | `members.read` |
+| `GET /studios/{id}/members` | `members.read`; `?role=student` — `students.write` |
+| `GET /studios/{id}/teachers` | `schedule.read` |
 | `POST/PATCH/DELETE /studios/{id}/members…` | `members.write` |
 | `POST …/members` с `roles:["student"]` | `students.write` |
 | `POST …/owner-transfer` | `studio.archive` (только owner) |
@@ -377,6 +479,12 @@
 | `TEACHER_CONFLICT` | 409 | пересечение по преподавателю |
 | `OUTSIDE_WORKING_HOURS` | 422 | сеанс вне рабочих часов |
 | `DATE_RANGE_TOO_LONG` | 422 | слишком длинная серия или диапазон |
+| `NOT_A_TEACHER` | 422 | членство не в этой студии, неактивно или без роли `teacher` |
+| `ARCHIVED_COURSE` | 422 | выбран курс из архива |
+| `ARCHIVED_ROOM` | 422 | выбран зал из архива |
+| `ALREADY_OWNER` | 422 | участник уже владелец студии |
+| `INVALID_TIMEZONE` | 422 | неизвестный часовой пояс |
+| `INVALID_WORKING_HOURS` | 422 | рабочие часы заданы некорректно |
 | `UNKNOWN_ROLE` | 422 | роль вне набора |
 | `INVALID_REFERRAL` | 422 | недопустимый код реферальной ссылки |
 | `REFERRAL_TAKEN` | 409 | код занят другой студией |
@@ -390,3 +498,8 @@
 
 **Q3** (участие в нескольких студиях) на контракты не влияет: студия всегда в пути запроса.
 **Q8** (роль «родитель») добавит значение в `roles` и строку в матрицу прав.
+
+**Изменения 1.1.0** (§0) ждут реализации. До неё код расходится с этим документом: принимает
+`durationMin` в сеансах, не отдаёт `teacherMembershipId` у курсов, отдаёт список персонала куратору,
+называет идентификатор сеанса в списке расписания `id` вместо `sessionId`, разрешает менять
+собственный набор ролей.
