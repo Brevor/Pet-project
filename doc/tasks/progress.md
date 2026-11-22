@@ -8,9 +8,10 @@
 
 ## 1. Текущее состояние
 
-- Кода нет: `src/`, `client/`, `server/`, `package.json` отсутствуют.
-- Проверки `pnpm typecheck`, `pnpm lint`, `pnpm test` **не запускаются** — проверять пока нечего.
-- Архитектура и контракты зафиксированы, схема БД **не подтверждена** пользователем (Decision Gate).
+- Каркас появился: монорепо `server/` + `client/`, `package.json`, конфиги, 314 пакетов установлено.
+- Проверки выполняются: typecheck (server, client), eslint, 3 теста сервера — всё зелёное.
+- Схема БД **не подтверждена** (D1), PostgreSQL **не установлен** (D6) — M1 не начат.
+- Клиентская сборка `vite build` в песочнице не запускается (см. §4.2).
 
 ## 2. Блокеры до старта кодинга
 
@@ -98,19 +99,34 @@ Node и pnpm не в PATH — задачи `T-01` и `T-04` должны заф�
 | P-06 | Расписание: сеансы курсов, проверка рабочих часов, конфликты зала и преподавателя, общий просмотр для всех ролей | `prototype/index.html`, `prototype/app.js` | сеанс вне рабочих часов отклоняется с сообщением | SCH-1…SCH-7, ROM-5 |
 | P-07 | Тесты прототипа под новую модель | `prototype/logic.test.mjs` | покрыты RBAC, рабочие часы, 140 символов, последний владелец, конфликты | все выше |
 
-### 4.1. M0–M5 (deferred)
+### 4.1. M0–M5: M0 выполнен, далее открыто
 
-Полноценный стек из раздела 3 остаётся в силе, но отложен: нужны D1 (схема БД),
-D5 (пакеты) и D6 (PostgreSQL). Задачи ниже не ставятся в работу до этих решений.
+Стек из раздела 3 в силе. **2026-11-22 пользователь подтвердил продолжение реализации**: D5 закрыт
+(пакеты установлены, список в §3.1), M0 выполнен. D1 (схема БД) и D6 (PostgreSQL) открыты —
+M1+ не начинать до их закрытия.
 
-### M0. Каркас (не требует БД)
+### M0. Каркас — выполнено 2026-11-22
 
-| ID | Задача | Файлы | Готово, когда | Зависит от |
+| ID | Задача | Файлы | Готово, когда | Статус |
 |---|---|---|---|---|
-| T-01 | Монорепо и инструменты: workspace, tsconfig strict, eslint, prettier, vitest, `.gitignore`, `.env.example` | `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `eslint.config.js`, `.prettierrc`, `.gitignore` | `pnpm install` и три проверки проходят на пустом проекте | D5 |
-| T-02 | Каркас сервера: Fastify-приложение, конфиг из env, конверт ошибок, `GET /health` | `server/package.json`, `server/tsconfig.json`, `server/src/app.ts`, `server/src/server.ts`, `server/src/config.ts`, `server/src/errors.ts` | тест: `/health` → 200; ошибка → `{error:{code,message}}` | T-01 |
-| T-03 | Каркас клиента: Vite + React + TS + Tailwind, маршрутизация, пустые экраны | `client/package.json`, `client/vite.config.ts`, `client/index.html`, `client/src/main.tsx`, `client/src/App.tsx`, `client/tailwind.config.js` | `pnpm --filter client build` проходит | T-01 |
-| T-04 | Окружение БД: запуск PostgreSQL, `CREATE EXTENSION btree_gist`, миграционный механизм (SQL-файлы + runner), подключение пула | `server/src/db/pool.ts`, `server/src/db/migrate.ts`, `migrations/000_base.sql`, `docker-compose.yml` (если появится Docker), `README.md` | миграция применяется на чистой БД; повторный запуск идемпотентен | D6, T-02 |
+| T-01 | Монорепо и инструменты: workspace, tsconfig strict, eslint, prettier, `.gitignore`, `.env.example` | `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `eslint.config.js`, `.prettierrc`, `.gitignore` | install + typecheck + lint | ✅ выполнено (vitest → `node:test`, §4.2) |
+| T-02 | Каркас сервера: Fastify, конфиг из env, конверт ошибок, `GET /health` | `server/**` | `/health` → 200; ошибка → конверт | ✅ выполнено, 3 теста |
+| T-03 | Каркас клиента: Vite + React + TS + Tailwind, маршрутизация | `client/**` | сборка клиента проходит | ⚠️ код и typecheck готовы, `vite build` не проверен (§4.2) |
+| T-04 | Окружение БД: PostgreSQL, `btree_gist`, миграции, пул | `server/src/db/**`, `migrations/**` | миграция на чистой БД | ⛔ ждёт D6 |
+
+### 4.2. Отклонения окружения (2026-11-22)
+
+Песочница DSH запрещает spawn дочерних процессов с пайпами (`EPERM`), поэтому проверки идут
+напрямую через node, а не через `pnpm run`:
+
+| Что | Штатно | В песочнице |
+|---|---|---|
+| Тесты сервера | `vitest run` | `node:test` + `node server/dist/test/app.test.js` |
+| Проверки | `pnpm typecheck/lint/test` | `node node_modules/typescript/lib/tsc.js`, `node node_modules/eslint/bin/eslint.js .` |
+| `node_modules` | изолированный линкер pnpm | `nodeLinker: hoisted` — junction-ссылки в песочнице ломаются |
+| Сборка клиента | `vite build` | недоступна: esbuild не может запустить сервис |
+
+На обычной машине достаточно `pnpm install && pnpm typecheck && pnpm lint && pnpm test`.
 
 ### M1. Схема данных
 
