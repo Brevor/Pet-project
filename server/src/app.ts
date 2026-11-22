@@ -27,6 +27,12 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   app.register(jwt, { secret: options.jwtSecret ?? 'test-secret' });
 
+  for (const type of ['image/png', 'image/jpeg', 'image/webp']) {
+    app.addContentTypeParser(type, { parseAs: 'buffer' }, (_request, body, done) => {
+      done(null, body);
+    });
+  }
+
   app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       await request.jwtVerify();

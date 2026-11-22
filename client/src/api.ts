@@ -29,7 +29,7 @@ export class ApiError extends Error {
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  if (init.body) {
+  if (init.body && !(init.body instanceof Blob)) {
     headers.set('content-type', 'application/json');
   }
   const token = getToken();

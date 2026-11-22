@@ -9,7 +9,7 @@ interface MeResponse {
 
 const ALL_ROLES = Object.keys(ROLE_LABELS);
 
-export function StaffTab({ studioId }: { studioId: string }) {
+export function StaffTab({ studioId, canManage }: { studioId: string; canManage: boolean }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [isOwner, setIsOwner] = useState(false);
   const [currentEmail, setCurrentEmail] = useState('');
@@ -147,7 +147,8 @@ export function StaffTab({ studioId }: { studioId: string }) {
     <section className="rounded-xl border border-slate-200 bg-white p-6">
       <h3 className="text-base font-semibold">Персонал</h3>
 
-      <form onSubmit={searchMember} className="mt-4 space-y-3 rounded-lg bg-slate-50 p-4">
+      {canManage && (
+        <form onSubmit={searchMember} className="mt-4 space-y-3 rounded-lg bg-slate-50 p-4">
         <div>
           <p className="text-sm font-medium text-slate-700">Назначить роли участнику</p>
           <p className="text-xs text-slate-500">
@@ -240,6 +241,7 @@ export function StaffTab({ studioId }: { studioId: string }) {
           </div>
         )}
       </form>
+      )}
 
       {error && <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
@@ -312,6 +314,7 @@ export function StaffTab({ studioId }: { studioId: string }) {
                   )}
                 </td>
                 <td className="py-2 text-right">
+                  {canManage && (
                   <div className="flex justify-end gap-2">
                     {canEdit && editingId !== member.membershipId && (
                       <button
@@ -341,6 +344,7 @@ export function StaffTab({ studioId }: { studioId: string }) {
                       </button>
                     )}
                   </div>
+                  )}
                 </td>
               </tr>
             );

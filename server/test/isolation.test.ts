@@ -201,8 +201,9 @@ test('куратор видит учеников, но не персонал; п
     url: `/api/v1/studios/${studioId}/members`,
     headers: auth(curator.token)
   });
-  assert.equal(staff.statusCode, 403);
-  assert.equal(staff.json().error.code, 'FORBIDDEN');
+  assert.equal(staff.statusCode, 200);
+  assert.ok(staff.json().items.length >= 2);
+  assert.ok(staff.json().items.every((item: { email: string | null }) => item.email === null));
 
   const students = await requireApp().inject({
     method: 'GET',
@@ -211,7 +212,7 @@ test('куратор видит учеников, но не персонал; п
   });
   assert.equal(students.statusCode, 200);
   assert.equal(students.json().items.length, 1);
-  assert.equal(students.json().items[0].email, student.email);
+  assert.equal(students.json().items[0].email, null);
 
   const teachersForCurator = await requireApp().inject({
     method: 'GET',
@@ -237,4 +238,39 @@ test('куратор видит учеников, но не персонал; п
   });
   assert.equal(fullStaff.statusCode, 200);
   assert.equal(fullStaff.json().items.length, 4);
+});
+
+test('«Команда» на просмотр: teacher видит сотрудников без email, student — нет', { skip }, async () => {
+  const app = requireApp();
+  const owner = await registerUser();
+  const studioId = await createStudio(owner.token);
+  const teacher = await registerUser();
+  const student = await registerUser();
+  await addMember(owner.token, studioId, teacher.email, ['teacher']);
+  await addMember(owner.token, studioId, student.email, ['student']);
+
+  const teacherView = await app.inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/members`,
+    headers: auth(teacher.token)
+  });
+  assert.equal(teacherView.statusCode, 200);
+  assert.ok(teacherView.json().items.length >= 2);
+  assert.ok(teacherView.json().items.every((item: { email: string | null }) => item.email === null));
+
+  const studentView = await app.inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/members`,
+    headers: auth(student.token)
+  });
+  assert.equal(studentView.statusCode, 403);
+  assert.equal(studentView.json().error.code, 'FORBIDDEN');
+
+  const ownerView = await app.inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/members`,
+    headers: auth(owner.token)
+  });
+  assert.equal(ownerView.statusCode, 200);
+  assert.ok(ownerView.json().items.some((item: { email: string | null }) => item.email !== null));
 });

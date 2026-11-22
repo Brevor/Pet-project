@@ -35,7 +35,7 @@ const emptyForm: CourseForm = {
   teacherMembershipId: ''
 };
 
-export function CoursesTab({ studioId }: { studioId: string }) {
+export function CoursesTab({ studioId, canManage }: { studioId: string; canManage: boolean }) {
   const [courses, setCourses] = useState<Course[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [form, setForm] = useState<CourseForm>(emptyForm);
@@ -153,8 +153,9 @@ export function CoursesTab({ studioId }: { studioId: string }) {
 
   return (
     <section className="space-y-4">
-      <form
-        onSubmit={createCourse}
+      {canManage && (
+        <form
+          onSubmit={createCourse}
         className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4"
       >
         <label className="min-w-[220px] flex-1 text-sm">
@@ -259,7 +260,8 @@ export function CoursesTab({ studioId }: { studioId: string }) {
         >
           Добавить курс
         </button>
-      </form>
+        </form>
+      )}
 
       {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
@@ -422,25 +424,29 @@ export function CoursesTab({ studioId }: { studioId: string }) {
                   <td className="px-4 py-2 text-slate-600">{course.capacity}</td>
                   <td className="px-4 py-2 text-slate-600">{course.teacherName ?? '—'}</td>
                   <td className="px-4 py-2 text-right">
-                    {course.archived && (
-                      <span className="mr-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600">
-                        архив
-                      </span>
+                    {canManage && (
+                      <>
+                        {course.archived && (
+                          <span className="mr-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600">
+                            архив
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => startEdit(course)}
+                          className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                        >
+                          Редактировать
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleArchive(course)}
+                          className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                        >
+                          {course.archived ? 'Вернуть' : 'В архив'}
+                        </button>
+                      </>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => startEdit(course)}
-                      className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
-                    >
-                      Редактировать
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleArchive(course)}
-                      className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
-                    >
-                      {course.archived ? 'Вернуть' : 'В архив'}
-                    </button>
                   </td>
                 </tr>
               )

@@ -3,7 +3,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 import { AppError, errorBody } from '../../errors';
 import { requireAccess } from '../access/guard';
-import { isRole } from '../access/rbac';
+import { can, isRole } from '../access/rbac';
 import { randomBytes } from 'node:crypto';
 import { hashPassword } from '../auth/password';
 import { findUserByEmail, insertUser } from '../auth/repository';
@@ -60,7 +60,7 @@ export async function membersRoutes(
     { preHandler: [app.authenticate] },
     async (request, reply) => {
       const query = request.query as { role?: string; q?: string };
-      const action = query.role === 'student' ? 'students.write' : 'members.read';
+      const action = query.role === 'student' ? 'students.write' : 'members.list';
       const membership = await requireAccess(pool, request, reply, action);
       if (!membership) return;
 
@@ -68,7 +68,9 @@ export async function membersRoutes(
         role: query.role,
         q: query.q
       });
-      return { items, total: items.length };
+      const seesEmail = can(membership.roles, 'members.write');
+      const visible = items.map((item) => ({ ...item, email: seesEmail ? item.email : null }));
+      return { items: visible, total: visible.length };
     }
   );
 
