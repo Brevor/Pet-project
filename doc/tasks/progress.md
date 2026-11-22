@@ -183,15 +183,15 @@ D1 подтверждён пользователем, D6 закрыт: PostgreSQ
 | T-27 | Тесты изоляции и прав: одна студия не видит другую, все роли видят расписание, правка запрещена | `server/test/isolation.test.ts`, `server/test/rbac.test.ts` | NFR-1, NFR-2, SCH-7 покрыты | T-12 |
 | T-28 | E2E-сценарий §12 требований: от регистрации до конфликта в расписании | `server/test/e2e-studio.test.ts` | сценарий проходит целиком | T-26 |
 
-### M6. Локальный деплой (Docker Compose) — файлы готовы 2026-11-22
+### M6. Локальный деплой (Docker Compose) — выполнено 2026-11-22
 
 | ID | Задача | Файлы | Готово, когда | Статус |
 |---|---|---|---|---|
 | D-01 | Compose: `db` + `api` + `web`, healthchecks, volume, restart | `docker-compose.yml` | `docker compose config` валиден | ✅ |
-| D-02 | Образ API: сборка `tsc`, прод-запуск, миграции при старте | `server/Dockerfile`, `deploy/entrypoint.sh` | контейнер поднимается, `/health` → 200 | ⏳ нужен запущенный Docker |
-| D-03 | Образ клиента: Vite build → Caddy (статика + `/api` proxy) | `client/Dockerfile`, `deploy/Caddyfile` | страница на `:8080` | ⏳ |
+| D-02 | Образ API: сборка `tsc`, прод-запуск, миграции при старте | `server/Dockerfile`, `deploy/entrypoint.sh` | контейнер поднимается, `/health` → 200 | ✅ api healthy, миграции применились |
+| D-03 | Образ клиента: Vite build → Caddy (статика + `/api` proxy) | `client/Dockerfile`, `deploy/Caddyfile` | страница на `:8080` | ✅ web отдаёт StudioFlow |
 | D-04 | Документация и переменные | `deploy/README.md`, `.env.compose.example` | инструкция воспроизводима | ✅ |
-| D-05 | Первый запуск и smoke-тест | — | `curl :8080/health` → 200 | ⏳ ждёт Docker Desktop |
+| D-05 | Первый запуск и smoke-тест | — | `curl :8080/health` → 200 | ✅ 200; по пути исправлены: том PG18, `allowBuilds`, `tsconfig.base.json`, префикс `/api/v1` |
 
 ## 5. Граф зависимостей
 
@@ -227,3 +227,4 @@ T-12 → T-27
 2. M2 — доступ; после M2 проверка прав доступна в изоляции.
 3. M3 + M4 — справочники и персонал.
 4. M5 — расписание; сдача сквозным сценарием T-28.
+
