@@ -125,6 +125,32 @@ test('сквозной сценарий §12: студия, персонал, з
   });
   const teacherId = teacherMembership.json().items[0].membershipId as string;
 
+  const courseWithTeacher = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${studioId}/courses/${course.json().course.id}`,
+    headers: auth(owner.token),
+    payload: { teacherMembershipId: teacherId }
+  });
+  assert.equal(courseWithTeacher.statusCode, 200);
+  assert.equal(courseWithTeacher.json().course.teacherName, 'teacher');
+
+  const rolesUpdate = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${studioId}/members/${teacherId}`,
+    headers: auth(owner.token),
+    payload: { roles: ['teacher', 'curator'] }
+  });
+  assert.equal(rolesUpdate.statusCode, 200);
+  assert.deepEqual(rolesUpdate.json().membership.roles, ['curator', 'teacher']);
+
+  const rolesRestore = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${studioId}/members/${teacherId}`,
+    headers: auth(owner.token),
+    payload: { roles: ['teacher'] }
+  });
+  assert.equal(rolesRestore.statusCode, 200);
+
   const series = await requireApp().inject({
     method: 'POST',
     url: `/api/v1/studios/${studioId}/sessions`,
@@ -132,7 +158,6 @@ test('сквозной сценарий §12: студия, персонал, з
     payload: {
       courseId: course.json().course.id,
       roomId: roomA.json().room.id,
-      teacherMembershipId: teacherId,
       series: {
         weekdays: [1, 3],
         startTime: '18:00',
@@ -186,4 +211,38 @@ test('сквозной сценарий §12: студия, персонал, з
   });
   assert.equal(studentSchedule.statusCode, 200);
   assert.equal(studentSchedule.json().items.length, 4);
+
+  const firstSession = teacherSchedule.json().items[0] as {
+    sessionId: string;
+    startsAt: string;
+    endsAt: string;
+  };
+  const durationMinutes =
+    (Date.parse(firstSession.endsAt) - Date.parse(firstSession.startsAt)) / 60_000;
+  assert.equal(durationMinutes, 90);
+
+  const durationPost = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studioId}/sessions`,
+    headers: auth(owner.token),
+    payload: {
+      courseId: course.json().course.id,
+      roomId: roomB.json().room.id,
+      teacherMembershipId: teacherId,
+      startsAt: '2027-02-05T10:00:00+03:00',
+      durationMin: 60
+    }
+  });
+  assert.equal(durationPost.statusCode, 422);
+  assert.equal(durationPost.json().error.code, 'VALIDATION');
+  assert.ok(durationPost.json().error.details.fields.durationMin);
+
+  const durationPatch = await requireApp().inject({
+    method: 'PATCH',
+    url: `/api/v1/studios/${studioId}/sessions/${firstSession.sessionId}`,
+    headers: auth(owner.token),
+    payload: { durationMin: 120 }
+  });
+  assert.equal(durationPatch.statusCode, 422);
+  assert.ok(durationPatch.json().error.details.fields.durationMin);
 });

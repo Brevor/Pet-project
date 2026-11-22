@@ -44,7 +44,14 @@ export interface Course {
   kind: string;
   defaultDurationMin: number;
   capacity: number;
+  teacherMembershipId: string | null;
+  teacherName: string | null;
   archived: boolean;
+}
+
+export interface Teacher {
+  membershipId: string;
+  displayName: string;
 }
 
 export interface SessionItem {
