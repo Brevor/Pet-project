@@ -8,9 +8,11 @@
 
 ## 1. Текущее состояние
 
-- Каркас появился: монорепо `server/` + `client/`, `package.json`, конфиги, 314 пакетов установлено.
-- Проверки выполняются: typecheck (server, client), eslint, 3 теста сервера — всё зелёное.
-- Схема БД **не подтверждена** (D1), PostgreSQL **не установлен** (D6) — M1 не начат.
+- Каркас и схема БД готовы: монорепо `server/` + `client/`, 4 миграции накатаны в локальный
+  PostgreSQL 18 (база `studioflow`).
+- Проверки: typecheck (server, client), eslint, 3 API-теста, 5 интеграционных тестов БД — зелёные.
+- D1 подтверждён, D6 закрыт (локальный PostgreSQL, `trust` на 127.0.0.1).
+- Docker установлен, но демон не запущен — для локальной разработки не нужен.
 - Клиентская сборка `vite build` в песочнице не запускается (см. §4.2).
 
 ## 2. Блокеры до старта кодинга
@@ -128,15 +130,19 @@ M1+ не начинать до их закрытия.
 
 На обычной машине достаточно `pnpm install && pnpm typecheck && pnpm lint && pnpm test`.
 
-### M1. Схема данных
+### M1. Схема данных — миграции выполнены 2026-11-22
 
-| ID | Задача | Файлы | Готово, когда | Зависит от |
+D1 подтверждён пользователем, D6 закрыт: PostgreSQL 18 локально (`trust` на 127.0.0.1),
+база `studioflow`, `DATABASE_URL=postgres://postgres@127.0.0.1:5432/studioflow`.
+
+| ID | Задача | Файлы | Готово, когда | Статус |
 |---|---|---|---|---|
-| T-05 | Миграция: `users`, `studios`, `studio_working_hours` | `migrations/001_users_studios.sql` | накат и откат; уникальный `lower(email)`; CHECK рабочих часов | T-04, D1 |
-| T-06 | Миграция: `memberships`, `membership_roles`, частичный уникальный индекс владельца | `migrations/002_memberships.sql` | попытка вставить второго `owner` в студию → ошибка БД | T-05 |
-| T-07 | Миграция: `rooms`, `courses` + уникальность имён без учёта регистра, CHECK длины 2–140 | `migrations/003_rooms_courses.sql` | дубль имени в студии → ошибка БД; 141 символ → ошибка | T-05 |
-| T-08 | Миграция: `class_series`, `class_sessions`, exclusion-ограничения пересечений | `migrations/004_schedule.sql` | пересечение по залу и по преподавателю ловится БД (SQLSTATE 23P01) | T-07, T-06 |
-| T-09 | Слой доступа: пул, транзакции, студийно-ограниченные репозитории | `server/src/db/index.ts`, `server/src/db/repositories/*.ts` | типы не допускают запрос без `studioId`; тест на изоляцию | T-08 |
+| T-04 | Миграционный механизм: runner, идемпотентность, `schema_migrations` | `server/src/db/migrate.ts`, `server/src/db/pool.ts` | повторный запуск → «нечего применять» | ✅ 4 миграции, повтор идемпотентен |
+| T-05 | `users`, `studios`, `studio_working_hours` | `migrations/001_users_studios.sql` | уникальный `lower(email)`, CHECK часов | ✅ накатано |
+| T-06 | `memberships`, `membership_roles`, частичный уникальный индекс владельца | `migrations/002_memberships.sql` | второй `owner` → ошибка БД | ✅ тест: SQLSTATE 23505 |
+| T-07 | `rooms`, `courses`, уникальность имён, CHECK длины 2–140 | `migrations/003_rooms_courses.sql` | дубль → ошибка; 141 символ → ошибка | ✅ накатано |
+| T-08 | `class_series`, `class_sessions`, exclusion-ограничения | `migrations/004_schedule.sql` | пересечения ловятся БД (23P01) | ✅ тесты: зал, преподаватель, отменённый слот |
+| T-09 | Слой доступа: пул, транзакции, студийно-ограниченные репозитории | `server/src/db/repositories/*.ts` | запрос без `studioId` невозможен; тест изоляции | ⏳ следующая задача |
 
 ### M2. Аутентификация и права
 
