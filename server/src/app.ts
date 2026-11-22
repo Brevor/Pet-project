@@ -1,10 +1,42 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
+import jwt from '@fastify/jwt';
+import type { Pool } from 'pg';
 import { AppError, errorBody } from './errors';
+import { authRoutes } from './modules/auth/routes';
 
-export function buildApp(): FastifyInstance {
+declare module 'fastify' {
+  interface FastifyInstance {
+    authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<unknown>;
+  }
+}
+
+export interface BuildAppOptions {
+  pool?: Pool;
+  jwtSecret?: string;
+  jwtExpiresIn?: string;
+}
+
+export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const app = Fastify({ logger: false });
 
+  app.register(jwt, { secret: options.jwtSecret ?? 'test-secret' });
+
+  app.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      await request.jwtVerify();
+    } catch {
+      return reply.code(401).send(errorBody('UNAUTHORIZED', 'Требуется авторизация'));
+    }
+  });
+
   app.get('/health', async () => ({ status: 'ok' }));
+
+  if (options.pool) {
+    app.register(authRoutes, {
+      pool: options.pool,
+      jwtExpiresIn: options.jwtExpiresIn ?? '24h'
+    });
+  }
 
   app.setNotFoundHandler(async (request, reply) =>
     reply
