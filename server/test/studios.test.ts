@@ -153,6 +153,56 @@ test('архивировать студию может только владел
   assert.equal(ok.statusCode, 204);
 });
 
+test('архивная студия доступна только владельцу', { skip }, async () => {
+  const owner = await registerUser();
+  const studio = await createStudio(owner.token);
+  const member = await registerUser();
+
+  const added = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studio.id}/members`,
+    headers: auth(owner.token),
+    payload: { email: member.email, roles: ['admin'] }
+  });
+  assert.equal(added.statusCode, 201);
+
+  const before = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studio.id}`,
+    headers: auth(member.token)
+  });
+  assert.equal(before.statusCode, 200);
+
+  const archived = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studio.id}/archive`,
+    headers: auth(owner.token)
+  });
+  assert.equal(archived.statusCode, 204);
+
+  const memberStudio = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studio.id}`,
+    headers: auth(member.token)
+  });
+  assert.equal(memberStudio.statusCode, 403);
+  assert.equal(memberStudio.json().error.code, 'NOT_A_MEMBER');
+
+  const memberSchedule = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studio.id}/schedule?from=2026-12-01&to=2026-12-07`,
+    headers: auth(member.token)
+  });
+  assert.equal(memberSchedule.statusCode, 403);
+
+  const ownerStudio = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studio.id}`,
+    headers: auth(owner.token)
+  });
+  assert.equal(ownerStudio.statusCode, 200);
+});
+
 test('добавление участников: 404 для неизвестного email, 409 при дубле', { skip }, async () => {
   const owner = await registerUser();
   const studio = await createStudio(owner.token);
@@ -183,6 +233,39 @@ test('добавление участников: 404 для неизвестно
   });
   assert.equal(duplicate.statusCode, 409);
   assert.equal(duplicate.json().error.code, 'ALREADY_MEMBER');
+});
+
+test('роль владельца через POST /members выдаёт только owner', { skip }, async () => {
+  const owner = await registerUser();
+  const studio = await createStudio(owner.token);
+  const admin = await registerUser();
+
+  const added = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studio.id}/members`,
+    headers: auth(owner.token),
+    payload: { email: admin.email, roles: ['admin'] }
+  });
+  assert.equal(added.statusCode, 201);
+
+  const candidate = await registerUser();
+  const byAdmin = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studio.id}/members`,
+    headers: auth(admin.token),
+    payload: { email: candidate.email, roles: ['owner'] }
+  });
+  assert.equal(byAdmin.statusCode, 403);
+  assert.equal(byAdmin.json().error.code, 'FORBIDDEN');
+
+  const byOwner = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studio.id}/members`,
+    headers: auth(owner.token),
+    payload: { email: candidate.email, roles: ['owner'] }
+  });
+  assert.equal(byOwner.statusCode, 409);
+  assert.equal(byOwner.json().error.code, 'LAST_OWNER');
 });
 
 test('несколько ролей у участника и фильтр списка', { skip }, async () => {

@@ -113,6 +113,22 @@ export async function membersRoutes(
       );
       if (!membership) return;
 
+      if (parsed.data.roles.includes('owner')) {
+        if (!membership.roles.includes('owner')) {
+          return reply
+            .code(403)
+            .send(errorBody('FORBIDDEN', 'Роль владельца может выдать только владелец'));
+        }
+        return reply
+          .code(409)
+          .send(
+            errorBody(
+              'LAST_OWNER',
+              'В студии уже есть владелец — передайте владение через owner-transfer'
+            )
+          );
+      }
+
       const existing = await findUserByEmail(pool, parsed.data.email);
       let userId: string;
       let temporaryPassword: string | undefined;
