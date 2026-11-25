@@ -1,4 +1,5 @@
 export interface Membership {
+  membershipId: string;
   studioId: string;
   studioName: string;
   roles: string[];
@@ -114,3 +115,49 @@ export const KIND_LABELS: Record<string, string> = {
 };
 
 export const DAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+export interface AttendanceRecord {
+  attendanceId: string;
+  sessionId: string;
+  status: string;
+  markedAt: string;
+  startsAt: string;
+  endsAt: string;
+  courseName: string;
+  roomName: string;
+  teacherName: string;
+}
+
+export const ATTENDANCE_STATUS_LABELS: Record<string, string> = {
+  attended: 'пришёл',
+  no_show: 'не пришёл',
+  cancelled: 'отменил'
+};
+
+export interface StudentAchievement {
+  awardId: string;
+  achievementId: string;
+  name: string;
+  description: string | null;
+  eventDate: string | null;
+  awardedAt: string;
+  comment: string | null;
+  revokedAt: string | null;
+}
+
+export interface BalanceOperation {
+  operationId: string;
+  kind: string;
+  lessons: number;
+  comment: string | null;
+  expiresOn: string | null;
+  sessionId: string | null;
+  createdAt: string;
+}
+
+export const BALANCE_KIND_LABELS: Record<string, string> = {
+  topup: 'Начисление',
+  charge: 'Списание',
+  refund: 'Возврат',
+  correction: 'Корректировка',
+  expire: 'Истечение'
+};

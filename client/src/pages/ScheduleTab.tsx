@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 import {
   DAY_LABELS,
   courseColorHex,
@@ -12,6 +12,26 @@ import {
 } from '../types';
 
 const MINUTE_STEP = 15;
+
+function attendanceErrorText(cause: unknown): string {
+  if (!(cause instanceof ApiError)) return 'Не удалось отметить посещение';
+  switch (cause.code) {
+    case 'CHECKIN_WINDOW_CLOSED':
+      return 'Отметиться можно с начала занятия до +2 часов';
+    case 'CANCEL_WINDOW_CLOSED':
+      return 'Отменить участие можно только до начала занятия';
+    case 'ALREADY_MARKED':
+      return 'Вы уже отмечены на это занятие';
+    case 'NO_LESSONS_LEFT':
+      return 'На балансе нет занятий — пополните его у администратора';
+    case 'NOT_IN_ROSTER':
+      return 'Вы не записаны на этот курс';
+    case 'SESSION_CANCELLED':
+      return 'Занятие отменено';
+    default:
+      return cause.message;
+  }
+}
 
 function studioDateKey(moment: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -166,10 +186,15 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
   const [hoursDraft, setHoursDraft] = useState<WorkingHour[]>([]);
   const [timezoneDraft, setTimezoneDraft] = useState('');
   const [editingHours, setEditingHours] = useState(false);
+  const [myStatus, setMyStatus] = useState<string | null>(null);
+  const [attendanceBusy, setAttendanceBusy] = useState(false);
+  const [attendanceError, setAttendanceError] = useState('');
+  const [attendanceNotice, setAttendanceNotice] = useState('');
 
   const timeZone = studio?.studio.timezone ?? 'Europe/Moscow';
   const todayKey = studioDateKey(new Date(), timeZone);
   const canEditStudio = (studio?.myRoles ?? []).some((role) => role === 'owner' || role === 'admin');
+  const studentMode = (studio?.myRoles ?? []).includes('student') && !canManage;
 
   useEffect(() => {
     setWeekStart(mondayOf(studioDateKey(new Date(), timeZone)));
@@ -274,6 +299,53 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
   for (const course of courses) colorByCourse.set(course.id, courseColorHex(course.color));
 
   const selected = sessions.find((session) => session.sessionId === selectedId) ?? null;
+  const nowMs = Date.now();
+  const selectedStartMs = selected ? Date.parse(selected.startsAt) : 0;
+  const checkInOpen =
+    Boolean(selected) && nowMs >= selectedStartMs && nowMs <= selectedStartMs + 120 * 60_000;
+  const canCancelSelf = Boolean(selected) && nowMs < selectedStartMs;
+
+  useEffect(() => {
+    if (!selectedId || !studentMode) {
+      setMyStatus(null);
+      return;
+    }
+    let cancelled = false;
+    setMyStatus(null);
+    setAttendanceError('');
+    setAttendanceNotice('');
+    void api<{ items: Array<{ status: string | null }> }>(
+      `/studios/${studioId}/sessions/${selectedId}/attendance`
+    )
+      .then((data) => {
+        if (!cancelled) setMyStatus(data.items[0]?.status ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setMyStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, studentMode, studioId]);
+
+  async function markSelf(status: 'attended' | 'cancelled') {
+    if (!selected) return;
+    setAttendanceBusy(true);
+    setAttendanceError('');
+    setAttendanceNotice('');
+    try {
+      await api(`/studios/${studioId}/sessions/${selected.sessionId}/attendance`, {
+        method: 'POST',
+        body: JSON.stringify({ status })
+      });
+      setMyStatus(status);
+      setAttendanceNotice(status === 'attended' ? 'Отметка сохранена' : 'Участие отменено');
+    } catch (cause) {
+      setAttendanceError(attendanceErrorText(cause));
+    } finally {
+      setAttendanceBusy(false);
+    }
+  }
 
   const [isMobileSheet, setIsMobileSheet] = useState(
     () => typeof window !== 'undefined' && window.innerWidth < 768
@@ -960,6 +1032,48 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                           <p className="text-muted">{selected.teacherName}</p>
                           {selected.status === 'cancelled' && (
                             <p className="mt-1 font-semibold uppercase text-danger">отменён</p>
+                          )}
+                          {studentMode && selected.status === 'scheduled' && (
+                            <div className="mt-2 space-y-1.5 border-t border-line pt-2">
+                              {myStatus ? (
+                                <p className="font-semibold text-ink">
+                                  {myStatus === 'attended'
+                                    ? 'Вы отмечены: пришёл'
+                                    : myStatus === 'cancelled'
+                                      ? 'Вы отменили участие'
+                                      : 'Отметка: не пришёл'}
+                                </p>
+                              ) : (
+                                <>
+                                  {checkInOpen ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => void markSelf('attended')}
+                                      disabled={attendanceBusy}
+                                      className="rounded bg-brand px-2 py-1 font-semibold text-white hover:bg-brand-hover disabled:opacity-50"
+                                    >
+                                      Я пришёл
+                                    </button>
+                                  ) : canCancelSelf ? (
+                                    <p className="text-muted">Отметиться можно с началом занятия</p>
+                                  ) : (
+                                    <p className="text-muted">Окно отметки закрыто</p>
+                                  )}
+                                  {canCancelSelf && (
+                                    <button
+                                      type="button"
+                                      onClick={() => void markSelf('cancelled')}
+                                      disabled={attendanceBusy}
+                                      className="rounded border border-line-strong px-2 py-1 text-ink hover:bg-subtle disabled:opacity-50"
+                                    >
+                                      Не смогу прийти
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                              {attendanceNotice && <p className="text-success">{attendanceNotice}</p>}
+                              {attendanceError && <p className="text-danger">{attendanceError}</p>}
+                            </div>
                           )}
                           {canManage && (
                             <div className="mt-1.5 space-y-1.5">

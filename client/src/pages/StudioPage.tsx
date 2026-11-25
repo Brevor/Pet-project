@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
+import { isFresh } from '../format';
 import {
   DAY_LABELS,
   ROLE_LABELS,
   type Membership,
+  type StudentAchievement,
   type StudioView,
   type WorkingHour
 } from '../types';
@@ -12,6 +14,9 @@ import { Button } from '../ui/Button';
 import { InlineAlert } from '../ui/InlineAlert';
 import { Skeleton } from '../ui/States';
 import { Tabs } from '../ui/Tabs';
+import { AchievementsTab } from './AchievementsTab';
+import { AttendanceTab } from './AttendanceTab';
+import { BalanceTab } from './BalanceTab';
 import { CoursesTab } from './CoursesTab';
 import { OnboardingPage } from './OnboardingPage';
 import { RoomsTab } from './RoomsTab';
@@ -19,10 +24,13 @@ import { ScheduleTab } from './ScheduleTab';
 import { StaffTab } from './StaffTab';
 import { StudentsTab } from './StudentsTab';
 
-type Tab = 'schedule' | 'courses' | 'rooms' | 'staff' | 'students';
+type Tab = 'schedule' | 'attendance' | 'balance' | 'achievements' | 'courses' | 'rooms' | 'staff' | 'students';
 
 const ALL_TABS: Array<{ id: Tab; label: string }> = [
   { id: 'schedule', label: 'Расписание' },
+  { id: 'attendance', label: 'Посещения' },
+  { id: 'balance', label: 'Баланс' },
+  { id: 'achievements', label: 'Достижения' },
   { id: 'courses', label: 'Курсы' },
   { id: 'rooms', label: 'Залы' },
   { id: 'staff', label: 'Команда' },
@@ -46,6 +54,8 @@ export function StudioPage() {
   const [linkInput, setLinkInput] = useState('');
   const [savingLink, setSavingLink] = useState(false);
   const [linkNotice, setLinkNotice] = useState('');
+  const [membershipId, setMembershipId] = useState<string | null>(null);
+  const [newAchievements, setNewAchievements] = useState<StudentAchievement[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,11 +65,26 @@ export function StudioPage() {
       const first = list.items[0];
       if (!first) {
         setStudio(null);
+        setMembershipId(null);
+        setNewAchievements([]);
         return;
       }
+      setMembershipId(first.membershipId);
       const view = await api<StudioView>(`/studios/${first.studioId}`);
       setStudio(view);
       setLinkInput(view.referralCode);
+      if (first.roles.includes('student')) {
+        try {
+          const achievements = await api<{ items: StudentAchievement[] }>(
+            `/studios/${first.studioId}/students/${first.membershipId}/achievements`
+          );
+          setNewAchievements(achievements.items.filter((item) => isFresh(item.awardedAt)));
+        } catch {
+          setNewAchievements([]);
+        }
+      } else {
+        setNewAchievements([]);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Не удалось загрузить студию');
     } finally {
@@ -135,8 +160,12 @@ export function StudioPage() {
   const canManageCourses = canManageStudents;
   const canManageRooms = canManageStudents;
   const canEditLink = canManageStaff;
+  const isStudent = roles.includes('student');
   const isStudentOnly = roles.every((role) => role === 'student');
   const visibleTabs = ALL_TABS.filter((item) => {
+    if (item.id === 'attendance' || item.id === 'balance' || item.id === 'achievements') {
+      return isStudent;
+    }
     if (item.id === 'courses') return true;
     if (item.id === 'staff') return !isStudentOnly;
     if (item.id === 'students') return canManageStudents;
@@ -196,6 +225,12 @@ export function StudioPage() {
         </div>
       </section>
 
+      {newAchievements.length > 0 && (
+        <InlineAlert variant="success">
+          Новое достижение: {newAchievements.map((item) => item.name).join(', ')}
+        </InlineAlert>
+      )}
+
       <Tabs ariaLabel="Разделы студии" items={visibleTabs} value={tab} onChange={setTab} />
 
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
@@ -204,6 +239,23 @@ export function StudioPage() {
         {tab === 'rooms' && <RoomsTab studioId={studioId} />}
         {tab === 'courses' && <CoursesTab studioId={studioId} canManage={canManageCourses} />}
         {tab === 'schedule' && <ScheduleTab studioId={studioId} canManage={canManageSchedule} />}
+        {tab === 'attendance' && membershipId && (
+          <AttendanceTab
+            studioId={studioId}
+            membershipId={membershipId}
+            timeZone={studio.studio.timezone}
+          />
+        )}
+        {tab === 'balance' && membershipId && (
+          <BalanceTab studioId={studioId} membershipId={membershipId} timeZone={studio.studio.timezone} />
+        )}
+        {tab === 'achievements' && membershipId && (
+          <AchievementsTab
+            studioId={studioId}
+            membershipId={membershipId}
+            timeZone={studio.studio.timezone}
+          />
+        )}
       </div>
     </div>
   );
