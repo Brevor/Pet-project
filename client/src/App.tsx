@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Route, Routes } from 'react-router-dom';
-import { api, getToken, setToken } from './api';
+import { api, ApiError, getToken, setToken } from './api';
 import { Avatar } from './components/Avatar';
 import { Button } from './ui/Button';
 import { AuthPage } from './pages/AuthPage';
@@ -28,8 +28,12 @@ export function App() {
       .then((data) => {
         if (!cancelled) setMe(data.user);
       })
-      .catch(() => {
-        if (!cancelled) setMe(null);
+      .catch((cause) => {
+        if (cancelled) return;
+        setMe(null);
+        if (cause instanceof ApiError && cause.status === 401) {
+          setAuthed(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -69,17 +73,19 @@ export function App() {
                   Профиль
                 </Button>
               </nav>
-              {me && (
-                <div className="flex items-center gap-2 border-line pl-2 sm:border-l">
-                  <Avatar url={me.avatarUrl} name={me.displayName} size={28} />
-                  <span className="hidden max-w-[160px] truncate text-sm font-medium sm:inline">
-                    {me.displayName}
-                  </span>
-                  <Button size="sm" variant="ghost" onClick={logout}>
-                    Выйти
-                  </Button>
-                </div>
-              )}
+              <div className="flex items-center gap-2 border-line pl-2 sm:border-l">
+                {me && (
+                  <>
+                    <Avatar url={me.avatarUrl} name={me.displayName} size={28} />
+                    <span className="hidden max-w-[160px] truncate text-sm font-medium sm:inline">
+                      {me.displayName}
+                    </span>
+                  </>
+                )}
+                <Button size="sm" variant="ghost" onClick={logout}>
+                  Выйти
+                </Button>
+              </div>
             </div>
           )}
         </div>

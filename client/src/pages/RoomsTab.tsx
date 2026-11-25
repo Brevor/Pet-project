@@ -95,36 +95,36 @@ export function RoomsTab({ studioId }: { studioId: string }) {
         className="flex flex-wrap items-end gap-3 card p-4"
       >
         <label className="text-sm">
-          <span className="block text-slate-600">Название</span>
+          <span className="block text-muted">Название</span>
           <input
             required
             value={name}
             onChange={(event) => setName(event.target.value)}
-            className="mt-1 rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-violet-500"
+            className="mt-1 rounded-lg border border-line-strong px-3 py-2 outline-none focus:border-brand"
           />
         </label>
         <label className="text-sm">
-          <span className="block text-slate-600">Мест</span>
+          <span className="block text-muted">Мест</span>
           <input
             type="number"
             min={1}
             max={500}
             value={capacity}
             onChange={(event) => setCapacity(Number(event.target.value))}
-            className="mt-1 w-24 rounded-lg border border-slate-300 px-3 py-2"
+            className="mt-1 w-24 rounded-lg border border-line-strong px-3 py-2"
           />
         </label>
         <label className="flex-1 text-sm">
-          <span className="block text-slate-600">Комментарий</span>
+          <span className="block text-muted">Комментарий</span>
           <input
             value={note}
             onChange={(event) => setNote(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+            className="mt-1 w-full rounded-lg border border-line-strong px-3 py-2"
           />
         </label>
         <button
           type="submit"
-          className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-hover"
         >
           Добавить зал
         </button>
@@ -138,44 +138,44 @@ export function RoomsTab({ studioId }: { studioId: string }) {
             {editingId === room.id ? (
               <form onSubmit={(event) => saveEdit(event, room.id)} className="space-y-2">
                 <label className="block text-sm">
-                  <span className="text-slate-600">Название</span>
+                  <span className="text-muted">Название</span>
                   <input
                     required
                     value={editName}
                     onChange={(event) => setEditName(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                    className="mt-1 w-full rounded-lg border border-line-strong px-3 py-2"
                   />
                 </label>
                 <label className="block text-sm">
-                  <span className="text-slate-600">Мест</span>
+                  <span className="text-muted">Мест</span>
                   <input
                     type="number"
                     min={1}
                     max={500}
                     value={editCapacity}
                     onChange={(event) => setEditCapacity(Number(event.target.value))}
-                    className="mt-1 w-24 rounded-lg border border-slate-300 px-3 py-2"
+                    className="mt-1 w-24 rounded-lg border border-line-strong px-3 py-2"
                   />
                 </label>
                 <label className="block text-sm">
-                  <span className="text-slate-600">Комментарий</span>
+                  <span className="text-muted">Комментарий</span>
                   <input
                     value={editNote}
                     onChange={(event) => setEditNote(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                    className="mt-1 w-full rounded-lg border border-line-strong px-3 py-2"
                   />
                 </label>
                 <div className="flex gap-2 pt-1">
                   <button
                     type="submit"
-                    className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700"
+                    className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-hover"
                   >
                     Сохранить
                   </button>
                   <button
                     type="button"
                     onClick={() => setEditingId(null)}
-                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+                    className="rounded-lg border border-line-strong px-3 py-1.5 text-xs text-muted hover:bg-subtle"
                   >
                     Отмена
                   </button>
@@ -186,11 +186,11 @@ export function RoomsTab({ studioId }: { studioId: string }) {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h3 className="text-base font-semibold">{room.name}</h3>
-                    <p className="text-xs text-slate-500">{room.description ?? 'без описания'}</p>
+                    <p className="text-xs text-faint">{room.description ?? 'без описания'}</p>
                   </div>
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs ${
-                      room.archived ? 'bg-slate-200 text-slate-600' : 'bg-emerald-100 text-emerald-700'
+                      room.archived ? 'bg-slate-200 text-muted' : 'bg-emerald-100 text-emerald-700'
                     }`}
                   >
                     {room.archived ? 'архив' : `${room.capacity} мест`}
@@ -200,21 +200,21 @@ export function RoomsTab({ studioId }: { studioId: string }) {
                   <button
                     type="button"
                     onClick={() => startEdit(room)}
-                    className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100"
+                    className="rounded px-2 py-1 text-muted hover:bg-subtle"
                   >
                     Редактировать
                   </button>
                   <button
                     type="button"
                     onClick={() => toggleArchive(room)}
-                    className="rounded px-2 py-1 text-slate-600 hover:bg-slate-100"
+                    className="rounded px-2 py-1 text-muted hover:bg-subtle"
                   >
                     {room.archived ? 'Вернуть' : 'В архив'}
                   </button>
                   <button
                     type="button"
                     onClick={() => removeRoom(room)}
-                    className="rounded px-2 py-1 text-rose-600 hover:bg-rose-50"
+                    className="rounded px-2 py-1 text-danger hover:bg-danger-soft"
                   >
                     Удалить
                   </button>
