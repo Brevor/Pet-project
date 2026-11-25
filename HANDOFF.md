@@ -1,25 +1,26 @@
-# HANDOFF: M16 — точка остановки после T-92
+# HANDOFF: M16 — точка остановки после T-93
 
 > 2026-11-25 · Coder → следующая сессия
 
 ## Сделано
-- **T-92 закрыт** (UI ученика): вкладки «Посещения» (`AttendanceTab`), «Баланс» (`BalanceTab`),
-  «Достижения» (`AchievementsTab`) в `StudioPage` — видны при роли `student`; `membershipId` берётся
-  из `GET /studios`; самоотметка «Я пришёл» / отмена «Не смогу прийти» — в поповере сеанса
-  `ScheduleTab` (окно считается по `startsAt`, ошибки API маппятся по кодам); баннер «Новое
-  достижение» по `awardedAt` за 7 дней; `client/src/format.ts` — даты/склонение.
-  Проверки: `tsc` 0/0, eslint 0, `vite build` ок (запуск `node ../node_modules/vite/bin/vite.js build`
-  — `pnpm -C client build` в этом окружении падает из-за битого `.bin`, сами зависимости в корне есть).
+- **T-93 закрыт** (UI админа): `ScheduleTab` — блок «Ростер сеанса» в поповере для owner/admin
+  (список учеников ростера, кнопки `пришёл`/`не пришёл`/`отменил`, POST/PATCH отметок);
+  `CourseGroups` + кнопка в `CoursesTab` — группы курса, состав (добавить/убрать ученика),
+  архив/удаление; новый `BalancesTab` — список учеников с остатком, история, форма начисления
+  пакета (owner/admin); новый `AchievementsCatalogTab` — каталог (создание/архив/удаление),
+  выдача и отзыв с причиной; `StudentsTab` — кнопка «Карточка» с посещениями, балансом и
+  достижениями ученика (attendance — только owner/admin).
+- Сервер: добавлен `GET /studios/{id}/courses/{courseId}/groups/{groupId}/members` (состав группы)
+  — без него UI не мог управлять ростером; тест в `groups.test.ts`.
+- Проверки: `tsc` 0/0, eslint 0, `vite build` ок, наборы 80/80.
 
-## Следующая задача — T-93 (UI админа)
-Файлы: `client/src/pages/ScheduleTab.tsx` (ростер и отметки в поповере), `CoursesTab.tsx` (группы
-курса), новый `BalancesTab.tsx` и `AchievementsTab` (каталог) для staff, `StudentsTab.tsx` (карточка
-ученика: посещения, достижения, баланс, выдача/отзыв, начисление), `types.ts`, `StudioPage.tsx`.
-Ключевое: админ ставит/правит отметки (ростер = ученики групп курса, `GET/POST .../attendance`,
-`PATCH .../attendance/{id}`), группы в курсе (`/courses/{courseId}/groups`), начисление пакета
-(`POST .../balance/topups`), каталог и выдача достижений (`/achievements`, `/students/{id}/achievements`).
-Требования ATT-6, BAL-2, GRP-1, ACH-1; использовать существующие `ui/`-примитивы и токены.
-Проверки: `pnpm typecheck`, `pnpm lint`, `pnpm -C client build` (или прямой vite build).
+## Следующая задача — T-94 (тесты и права)
+Файлы: `server/test/*` (новый `isolation.test.ts`-кейс или расширение существующего).
+Ключевое: чужая студия для новых сущностей — 403/404 (sessions/attendance/balance/achievements/
+groups); teacher/assistant — 403 на отметки и начисления; rollback транзакции баланса
+(`NO_LESSONS_LEFT` не создаёт отметку); curator — 403 на выдачу отметок и начисление, но видит
+баланс/каталог; отзыв достижения и повторная выдача. Требования ROL-4, STU-4.
+Проверки: `pnpm test` (наборы), `pnpm typecheck`, `pnpm lint`.
 
 ## Правила
 Одна задача за шаг, проверки (`tsc` 0/0, eslint 0, наборы) до коммита, подтверждение перед следующей.
