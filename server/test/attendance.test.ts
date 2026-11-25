@@ -104,6 +104,20 @@ async function addMember(
   return response.json().membership.membershipId as string;
 }
 
+async function topUp(
+  token: string,
+  studioId: string,
+  membershipId: string,
+  lessons: number
+): Promise<void> {
+  const response = await requireApp().inject({
+    method: 'POST',
+    url: `/api/v1/studios/${studioId}/students/${membershipId}/balance/topups`,
+    headers: auth(token),
+    payload: { lessons }
+  });
+  assert.equal(response.statusCode, 201, response.body);
+}
 async function createGroup(token: string, studioId: string, courseId: string): Promise<string> {
   const response = await requireApp().inject({
     method: 'POST',
@@ -161,6 +175,7 @@ async function setup(): Promise<Fixture> {
 
   const groupId = await createGroup(owner.token, studioId, courseId);
   await addToGroup(owner.token, studioId, courseId, groupId, studentMembershipId);
+  await topUp(owner.token, studioId, studentMembershipId, 100);
 
   return {
     studioId,
@@ -176,6 +191,7 @@ async function setup(): Promise<Fixture> {
 async function addStudent(fixture: Fixture): Promise<Person> {
   const user = await registerUser();
   const membershipId = await addMember(fixture.ownerToken, fixture.studioId, user.email, ['student']);
+  await topUp(fixture.ownerToken, fixture.studioId, membershipId, 100);
   return { token: user.token, membershipId, email: user.email };
 }
 

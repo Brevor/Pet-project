@@ -1,27 +1,28 @@
-# HANDOFF: M16 — точка остановки после T-89
+# HANDOFF: M16 — точка остановки после T-90
 
 > 2026-11-25 · Coder → следующая сессия
 
 ## Сделано
-- **T-89 закрыт**: `server/src/modules/attendance/{routes,repository}.ts` (ростер, самоотметка в окне,
-  отметки/правки администратора, аудит `attendance_revisions`, история ученика), регистрация в `app.ts`,
-  право `attendance.manage` (owner, admin) в `rbac.ts`. Тесты `server/test/attendance.test.ts` (4 теста:
-  самоотметка и история; окна/ростер/отмена; админ/аудит/права; история/пагинация/дата создания студии).
-  `tsc` 0/0, eslint 0, наборы 75/75.
-- `server/package.json`: `test` переведён на glob `dist/test/**/*.test.js` — Node 24 не принимает каталог
-  в `node --test`.
+- **T-90 закрыт**: `server/src/modules/balance/{routes,repository}.ts` — `GET .../balance`,
+  `GET .../balance/operations`, `POST .../balance/topups`; права `balance.read` (owner/admin/curator,
+  ученик — свой) и `balance.write` (owner/admin) в `rbac.ts`, регистрация в `app.ts`.
+  Списание 1 занятия и возврат встроены в транзакции `attendance/repository.ts`
+  (`chargeAttendanceLesson` / `refundAttendanceLesson`), 0 — 409 `NO_LESSONS_LEFT` с откатом отметки.
+  Остаток — хронологический учёт пакетов: списание расходует только пакеты, действовавшие в момент
+  списания; просроченные занятия исчезают из остатка (BAL-9).
+- Тесты: `server/test/balance.test.ts` (начисление/история/права, списание/возврат/идемпотентность,
+  срок действия и порядок списания); в `attendance.test.ts` фикстуры с начислением. `tsc` 0/0,
+  eslint 0, наборы 78/78.
 
-## Следующая задача — T-90 (баланс)
-Файлы: `server/src/modules/balance/{routes,repository}.ts`, правки `attendance/repository.ts`
-(транзакция отметки уже открыта — вставлять списание/возврат туда).
-Ключевое: остаток = сумма операций; списание 1 занятия атомарно с `attended` (409 `NO_LESSONS_LEFT` при
-остатке 0 с учётом срока пакета), возврат при `attended → no_show/cancelled`, идемпотентность charge по
-`(session_id, membership_id)` — уникальный индекс `lesson_balance_charge_once` уже есть; эндпоинты
-`GET .../students/{membershipId}/balance`, `GET .../balance/operations`, `POST .../balance/topups`;
-права `balance.read` (owner/admin/curator, ученик — свой), `balance.write` (owner/admin); срок действия
-пакета (BAL-9).
-Тесты: `server/test/balance.test.ts`; в `attendance.test.ts` добавить начисление в фикстуру и проверки
-ATT-3/ATT-6 (при 0 — 409, при правке — возврат).
+## Следующая задача — T-91 (достижения)
+Файлы: `server/src/modules/achievements/{routes,repository}.ts`, сид предустановленного каталога при
+создании студии (`studios/repository.ts`), право `achievements.write` в `rbac.ts`, регистрация в `app.ts`.
+Ключевое: каталог `GET/POST /studios/{id}/achievements`, `PATCH/DELETE .../achievements/{id}`;
+выдача/отзыв `POST /studios/{id}/students/{membershipId}/achievements`,
+`DELETE .../achievements/{awardId}`; коды 409 `ACHIEVEMENT_NAME_TAKEN`, `ALREADY_AWARDED`;
+право `achievements.write` (owner, admin, curator); предустановленный каталог при `POST /studios`;
+одно не отозванное достижение на пару (achievement, membership) — уникальный индекс уже есть.
+Тесты: `server/test/achievements.test.ts` по образцу `balance.test.ts`.
 
 ## Правила
 Одна задача за шаг, проверки (`tsc` 0/0, eslint 0, наборы) до коммита, подтверждение перед следующей.
