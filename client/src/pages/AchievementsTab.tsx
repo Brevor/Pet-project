@@ -9,11 +9,13 @@ import { EmptyState, Skeleton } from '../ui/States';
 export function AchievementsTab({
   studioId,
   membershipId,
-  timeZone
+  timeZone,
+  staffView = false
 }: {
   studioId: string;
   membershipId: string;
   timeZone: string;
+  staffView?: boolean;
 }) {
   const [items, setItems] = useState<StudentAchievement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,17 +24,20 @@ export function AchievementsTab({
   useEffect(() => {
     setLoading(true);
     setError('');
+    const query = staffView ? '?includeRevoked=true' : '';
     void api<{ items: StudentAchievement[] }>(
-      `/studios/${studioId}/students/${membershipId}/achievements`
+      `/studios/${studioId}/students/${membershipId}/achievements${query}`
     )
       .then((data) => setItems(data.items))
       .catch((cause) =>
         setError(cause instanceof Error ? cause.message : 'Не удалось загрузить достижения')
       )
       .finally(() => setLoading(false));
-  }, [studioId, membershipId]);
+  }, [studioId, membershipId, staffView]);
 
-  const freshCount = items.filter((item) => isFresh(item.awardedAt)).length;
+  const freshCount = items.filter(
+    (item) => !item.revokedAt && isFresh(item.awardedAt)
+  ).length;
 
   return (
     <section className="card p-4 md:p-6">
@@ -43,7 +48,9 @@ export function AchievementsTab({
         )}
       </div>
       <p className="mt-1 text-sm text-muted">
-        Награды студии за успехи и участие. Новые достижения отмечены значком «новое».
+        {staffView
+          ? 'Выданные достижения ученика, включая отозванные.'
+          : 'Награды студии за успехи и участие. Новые достижения отмечены значком «новое».'}
       </p>
 
       {error && (
@@ -61,12 +68,16 @@ export function AchievementsTab({
         <div className="mt-4">
           <EmptyState
             title="Достижений пока нет"
-            text="Куратор студии сможет выдать награду — она появится в этом списке."
+            text={
+              staffView
+                ? 'Ученику ещё не выдавали достижения.'
+                : 'Куратор студии сможет выдать награду — она появится в этом списке.'
+            }
           />
         </div>
       ) : (
         <>
-          {freshCount > 0 && (
+          {!staffView && freshCount > 0 && (
             <div className="mt-3">
               <InlineAlert variant="success">
                 Новых достижений: {freshCount}. Загляните в список ниже.
@@ -78,7 +89,11 @@ export function AchievementsTab({
               <li key={item.awardId} className="rounded-md border border-line p-4">
                 <div className="flex items-start justify-between gap-2">
                   <h4 className="text-sm font-semibold text-ink">{item.name}</h4>
-                  {isFresh(item.awardedAt) && <Badge tone="brand">новое</Badge>}
+                  {item.revokedAt ? (
+                    <Badge tone="neutral">отозвано</Badge>
+                  ) : (
+                    isFresh(item.awardedAt) && <Badge tone="brand">новое</Badge>
+                  )}
                 </div>
                 {item.description && (
                   <p className="mt-1 text-sm text-muted">{item.description}</p>
@@ -86,6 +101,7 @@ export function AchievementsTab({
                 <p className="mt-2 text-xs text-faint">
                   Выдано {formatDate(item.awardedAt, timeZone)}
                   {item.eventDate ? ` · событие ${formatIsoDate(item.eventDate)}` : ''}
+                  {item.revokedAt ? ` · отозвано ${formatDate(item.revokedAt, timeZone)}` : ''}
                 </p>
                 {item.comment && <p className="mt-1 text-xs text-faint">«{item.comment}»</p>}
               </li>

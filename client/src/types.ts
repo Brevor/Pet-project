@@ -161,3 +161,32 @@ export const BALANCE_KIND_LABELS: Record<string, string> = {
   correction: 'Корректировка',
   expire: 'Истечение'
 };
+export interface Group {
+  id: string;
+  courseId: string;
+  name: string;
+  archived: boolean;
+  memberCount: number;
+}
+
+export interface GroupMember {
+  membershipId: string;
+  displayName: string;
+}
+
+export interface AchievementCatalogItem {
+  achievementId: string;
+  name: string;
+  description: string | null;
+  eventDate: string | null;
+  archived: boolean;
+  awardedCount: number;
+}
+
+export interface SessionAttendanceItem {
+  membershipId: string;
+  studentName: string;
+  attendanceId: string | null;
+  status: string | null;
+  markedAt: string | null;
+}

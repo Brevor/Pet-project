@@ -164,6 +164,48 @@ export async function groupsRoutes(
     }
   );
 
+  app.get(
+    '/studios/:studioId/courses/:courseId/groups/:groupId/members',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const { courseId, groupId } = request.params as {
+        studioId: string;
+        courseId: string;
+        groupId: string;
+      };
+      const membership = await requireAccess(pool, request, reply, 'courses.write');
+      if (!membership) return;
+
+      const group = await pool.query(
+        'SELECT 1 FROM course_groups WHERE studio_id = $1 AND course_id = $2 AND id = $3',
+        [membership.studioId, courseId, groupId]
+      );
+      if (group.rows.length === 0) {
+        throw new AppError(404, 'NOT_FOUND', 'Группа не найдена');
+      }
+
+      const { rows } = await pool.query<{
+        membership_id: string;
+        display_name: string;
+      }>(
+        `SELECT m.id AS membership_id,
+                coalesce(u.display_name, u.email) AS display_name
+           FROM course_group_members g
+           JOIN memberships m ON m.id = g.membership_id
+           JOIN users u ON u.id = m.user_id
+          WHERE g.studio_id = $1 AND g.course_id = $2 AND g.group_id = $3
+          ORDER BY display_name`,
+        [membership.studioId, courseId, groupId]
+      );
+      return {
+        items: rows.map((row) => ({
+          membershipId: row.membership_id,
+          displayName: row.display_name
+        })),
+        total: rows.length
+      };
+    }
+  );
   app.post(
     '/studios/:studioId/courses/:courseId/groups/:groupId/members',
     { preHandler: [app.authenticate] },

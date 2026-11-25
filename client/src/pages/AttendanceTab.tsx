@@ -19,11 +19,13 @@ function statusTone(status: string): 'success' | 'warning' | 'neutral' {
 export function AttendanceTab({
   studioId,
   membershipId,
-  timeZone
+  timeZone,
+  staffView = false
 }: {
   studioId: string;
   membershipId: string;
   timeZone: string;
+  staffView?: boolean;
 }) {
   const [items, setItems] = useState<AttendanceRecord[]>([]);
   const [total, setTotal] = useState(0);
@@ -77,7 +79,9 @@ export function AttendanceTab({
         {!loading && <p className="text-xs text-faint">Всего записей: {total}</p>}
       </div>
       <p className="mt-1 text-sm text-muted">
-        Отметка «пришёл» списывает одно занятие с баланса. Отменить участие можно до начала занятия.
+        {staffView
+          ? 'История отметок ученика: дата, курс, зал, преподаватель и статус.'
+          : 'Отметка «пришёл» списывает одно занятие с баланса. Отменить участие можно до начала занятия.'}
       </p>
 
       {error && (
@@ -92,7 +96,11 @@ export function AttendanceTab({
         <div className="mt-4">
           <EmptyState
             title="Посещений пока нет"
-            text="Отметьтесь на занятии в расписании — оно появится здесь."
+            text={
+              staffView
+                ? 'Отметок пока нет.'
+                : 'Отметьтесь на занятии в расписании — оно появится здесь.'
+            }
           />
         </div>
       ) : (

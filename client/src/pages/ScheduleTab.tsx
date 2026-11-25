@@ -5,6 +5,7 @@ import {
   courseColorHex,
   type Course,
   type Room,
+  type SessionAttendanceItem,
   type SessionItem,
   type StudioView,
   type Teacher,
@@ -28,6 +29,24 @@ function attendanceErrorText(cause: unknown): string {
       return 'Вы не записаны на этот курс';
     case 'SESSION_CANCELLED':
       return 'Занятие отменено';
+    default:
+      return cause.message;
+  }
+}
+
+function adminAttendanceErrorText(cause: unknown): string {
+  if (!(cause instanceof ApiError)) return 'Не удалось сохранить отметку';
+  switch (cause.code) {
+    case 'NO_LESSONS_LEFT':
+      return 'У ученика нет занятий на балансе';
+    case 'SESSION_CANCELLED':
+      return 'Сеанс отменён — отметки запрещены';
+    case 'STUDIO_ARCHIVED':
+      return 'Студия в архиве — отметки запрещены';
+    case 'ALREADY_MARKED':
+      return 'Отметка уже существует — используйте другую кнопку';
+    case 'NOT_A_STUDENT':
+      return 'Участник не является учеником студии';
     default:
       return cause.message;
   }
@@ -148,7 +167,15 @@ function visibleRange(
   return { startHour, endHour };
 }
 
-export function ScheduleTab({ studioId, canManage }: { studioId: string; canManage: boolean }) {
+export function ScheduleTab({
+  studioId,
+  canManage,
+  canManageAttendance = false
+}: {
+  studioId: string;
+  canManage: boolean;
+  canManageAttendance?: boolean;
+}) {
   const [studio, setStudio] = useState<StudioView | null>(null);
   const [weekStart, setWeekStart] = useState(() => mondayOf(studioDateKey(new Date(), 'UTC')));
   const [roomFilter, setRoomFilter] = useState('');
@@ -190,6 +217,9 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
   const [attendanceBusy, setAttendanceBusy] = useState(false);
   const [attendanceError, setAttendanceError] = useState('');
   const [attendanceNotice, setAttendanceNotice] = useState('');
+  const [roster, setRoster] = useState<SessionAttendanceItem[]>([]);
+  const [rosterBusy, setRosterBusy] = useState(false);
+  const [rosterError, setRosterError] = useState('');
 
   const timeZone = studio?.studio.timezone ?? 'Europe/Moscow';
   const todayKey = studioDateKey(new Date(), timeZone);
@@ -327,6 +357,58 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
       cancelled = true;
     };
   }, [selectedId, studentMode, studioId]);
+
+  useEffect(() => {
+    if (!selectedId || !canManageAttendance) {
+      setRoster([]);
+      return;
+    }
+    let cancelled = false;
+    setRosterError('');
+    void api<{ items: SessionAttendanceItem[] }>(
+      `/studios/${studioId}/sessions/${selectedId}/attendance`
+    )
+      .then((data) => {
+        if (!cancelled) setRoster(data.items);
+      })
+      .catch((cause) => {
+        if (!cancelled) {
+          setRosterError(
+            cause instanceof Error ? cause.message : 'Не удалось загрузить ростер'
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, canManageAttendance, studioId]);
+
+  async function markStudent(item: SessionAttendanceItem, status: string) {
+    if (!selected) return;
+    setRosterBusy(true);
+    setRosterError('');
+    try {
+      if (item.attendanceId) {
+        await api(`/studios/${studioId}/attendance/${item.attendanceId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status })
+        });
+      } else {
+        await api(`/studios/${studioId}/sessions/${selected.sessionId}/attendance`, {
+          method: 'POST',
+          body: JSON.stringify({ membershipId: item.membershipId, status })
+        });
+      }
+      const data = await api<{ items: SessionAttendanceItem[] }>(
+        `/studios/${studioId}/sessions/${selected.sessionId}/attendance`
+      );
+      setRoster(data.items);
+    } catch (cause) {
+      setRosterError(adminAttendanceErrorText(cause));
+    } finally {
+      setRosterBusy(false);
+    }
+  }
 
   async function markSelf(status: 'attended' | 'cancelled') {
     if (!selected) return;
@@ -1073,6 +1155,52 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                               )}
                               {attendanceNotice && <p className="text-success">{attendanceNotice}</p>}
                               {attendanceError && <p className="text-danger">{attendanceError}</p>}
+                            </div>
+                          )}
+                          {canManageAttendance && (
+                            <div className="mt-2 border-t border-line pt-2">
+                              <p className="font-semibold text-ink">Ростер сеанса</p>
+                              {rosterError && <p className="text-danger">{rosterError}</p>}
+                              {roster.length === 0 ? (
+                                <p className="text-muted">В группах курса пока нет учеников</p>
+                              ) : (
+                                <ul className="mt-1 max-h-44 space-y-1 overflow-y-auto pr-1">
+                                  {roster.map((item) => (
+                                    <li
+                                      key={item.membershipId}
+                                      className="flex items-center justify-between gap-1"
+                                    >
+                                      <span className="truncate text-ink">{item.studentName}</span>
+                                      <span className="flex shrink-0 gap-0.5">
+                                        {(
+                                          [
+                                            ['attended', 'пришёл'],
+                                            ['no_show', 'не пришёл'],
+                                            ['cancelled', 'отменил']
+                                          ] as const
+                                        ).map(([status, label]) => (
+                                          <button
+                                            key={status}
+                                            type="button"
+                                            disabled={
+                                              rosterBusy || selected.status === 'cancelled'
+                                            }
+                                            onClick={() => void markStudent(item, status)}
+                                            aria-pressed={item.status === status}
+                                            className={
+                                              item.status === status
+                                                ? 'rounded bg-brand px-1 py-0.5 text-[10px] font-semibold text-white'
+                                                : 'rounded border border-line-strong px-1 py-0.5 text-[10px] text-muted hover:bg-subtle disabled:opacity-50'
+                                            }
+                                          >
+                                            {label}
+                                          </button>
+                                        ))}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
                             </div>
                           )}
                           {canManage && (

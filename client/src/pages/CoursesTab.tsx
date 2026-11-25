@@ -6,8 +6,10 @@ import {
   LEVEL_LABELS,
   courseColorHex,
   type Course,
+  type Member,
   type Teacher
 } from '../types';
+import { CourseGroups } from './CourseGroups';
 
 const LEVELS = ['beginner', 'intermediate', 'advanced', 'none'];
 const KINDS = ['group', 'individual'];
@@ -39,6 +41,7 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
   const [courses, setCourses] = useState<Course[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [form, setForm] = useState<CourseForm>(emptyForm);
+  const [students, setStudents] = useState<Member[]>([]);
   const [error, setError] = useState('');
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -51,7 +54,13 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
     ]);
     setCourses(courseList.items);
     setTeachers(teacherList.items);
-  }, [studioId]);
+    if (canManage) {
+      const studentList = await api<{ items: Member[] }>(
+        `/studios/${studioId}/members?role=student`
+      );
+      setStudents(studentList.items.filter((item) => item.roles.includes('student')));
+    }
+  }, [studioId, canManage]);
 
   useEffect(() => {
     void load().catch((cause) =>
@@ -455,6 +464,10 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
           </tbody>
         </table>
       </div>
+
+      {canManage && (
+        <CourseGroups studioId={studioId} courses={courses} students={students} />
+      )}
     </section>
   );
 }

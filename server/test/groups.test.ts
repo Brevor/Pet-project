@@ -130,6 +130,15 @@ test('группы: CRUD и состав (T-88)', { skip }, async () => {
   });
   assert.equal(add.statusCode, 204, add.body);
 
+  const roster = await requireApp().inject({
+    method: 'GET',
+    url: `/api/v1/studios/${studioId}/courses/${courseId}/groups/${groupId}/members`,
+    headers: auth(owner.token)
+  });
+  assert.equal(roster.statusCode, 200, roster.body);
+  assert.equal(roster.json().items.length, 1);
+  assert.equal(roster.json().items[0].membershipId, student);
+
   const second = await requireApp().inject({
     method: 'POST',
     url: `/api/v1/studios/${studioId}/courses/${courseId}/groups`,

@@ -14,8 +14,10 @@ import { Button } from '../ui/Button';
 import { InlineAlert } from '../ui/InlineAlert';
 import { Skeleton } from '../ui/States';
 import { Tabs } from '../ui/Tabs';
+import { AchievementsCatalogTab } from './AchievementsCatalogTab';
 import { AchievementsTab } from './AchievementsTab';
 import { AttendanceTab } from './AttendanceTab';
+import { BalancesTab } from './BalancesTab';
 import { BalanceTab } from './BalanceTab';
 import { CoursesTab } from './CoursesTab';
 import { OnboardingPage } from './OnboardingPage';
@@ -24,13 +26,23 @@ import { ScheduleTab } from './ScheduleTab';
 import { StaffTab } from './StaffTab';
 import { StudentsTab } from './StudentsTab';
 
-type Tab = 'schedule' | 'attendance' | 'balance' | 'achievements' | 'courses' | 'rooms' | 'staff' | 'students';
+type Tab =
+  | 'schedule'
+  | 'attendance'
+  | 'balance'
+  | 'achievements'
+  | 'balances'
+  | 'courses'
+  | 'rooms'
+  | 'staff'
+  | 'students';
 
 const ALL_TABS: Array<{ id: Tab; label: string }> = [
   { id: 'schedule', label: 'Расписание' },
   { id: 'attendance', label: 'Посещения' },
   { id: 'balance', label: 'Баланс' },
   { id: 'achievements', label: 'Достижения' },
+  { id: 'balances', label: 'Балансы' },
   { id: 'courses', label: 'Курсы' },
   { id: 'rooms', label: 'Залы' },
   { id: 'staff', label: 'Команда' },
@@ -163,9 +175,9 @@ export function StudioPage() {
   const isStudent = roles.includes('student');
   const isStudentOnly = roles.every((role) => role === 'student');
   const visibleTabs = ALL_TABS.filter((item) => {
-    if (item.id === 'attendance' || item.id === 'balance' || item.id === 'achievements') {
-      return isStudent;
-    }
+    if (item.id === 'attendance' || item.id === 'balance') return isStudent;
+    if (item.id === 'achievements') return isStudent || canManageStudents;
+    if (item.id === 'balances') return canManageStudents;
     if (item.id === 'courses') return true;
     if (item.id === 'staff') return !isStudentOnly;
     if (item.id === 'students') return canManageStudents;
@@ -235,10 +247,23 @@ export function StudioPage() {
 
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === 'staff' && <StaffTab studioId={studioId} canManage={canManageStaff} />}
-        {tab === 'students' && <StudentsTab studioId={studioId} canExclude={canManageStaff} />}
+        {tab === 'students' && (
+          <StudentsTab
+            studioId={studioId}
+            canExclude={canManageStaff}
+            canViewAttendance={canManageStaff}
+            timeZone={studio.studio.timezone}
+          />
+        )}
         {tab === 'rooms' && <RoomsTab studioId={studioId} />}
         {tab === 'courses' && <CoursesTab studioId={studioId} canManage={canManageCourses} />}
-        {tab === 'schedule' && <ScheduleTab studioId={studioId} canManage={canManageSchedule} />}
+        {tab === 'schedule' && (
+          <ScheduleTab
+            studioId={studioId}
+            canManage={canManageSchedule}
+            canManageAttendance={canManageStaff}
+          />
+        )}
         {tab === 'attendance' && membershipId && (
           <AttendanceTab
             studioId={studioId}
@@ -249,10 +274,22 @@ export function StudioPage() {
         {tab === 'balance' && membershipId && (
           <BalanceTab studioId={studioId} membershipId={membershipId} timeZone={studio.studio.timezone} />
         )}
-        {tab === 'achievements' && membershipId && (
-          <AchievementsTab
+        {tab === 'achievements' &&
+          (canManageStudents ? (
+            <AchievementsCatalogTab studioId={studioId} timeZone={studio.studio.timezone} />
+          ) : (
+            membershipId && (
+              <AchievementsTab
+                studioId={studioId}
+                membershipId={membershipId}
+                timeZone={studio.studio.timezone}
+              />
+            )
+          ))}
+        {tab === 'balances' && (
+          <BalancesTab
             studioId={studioId}
-            membershipId={membershipId}
+            canManage={canManageStaff}
             timeZone={studio.studio.timezone}
           />
         )}

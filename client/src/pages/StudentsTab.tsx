@@ -8,13 +8,20 @@ import { Field } from '../ui/Field';
 import { InlineAlert } from '../ui/InlineAlert';
 import { EmptyState, TableSkeleton } from '../ui/States';
 import { Table } from '../ui/Table';
+import { AchievementsTab } from './AchievementsTab';
+import { AttendanceTab } from './AttendanceTab';
+import { BalanceTab } from './BalanceTab';
 
 export function StudentsTab({
   studioId,
-  canExclude
+  canExclude,
+  timeZone,
+  canViewAttendance = false
 }: {
   studioId: string;
   canExclude: boolean;
+  timeZone: string;
+  canViewAttendance?: boolean;
 }) {
   const [students, setStudents] = useState<Member[]>([]);
   const [email, setEmail] = useState('');
@@ -22,6 +29,7 @@ export function StudentsTab({
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [cardFor, setCardFor] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const data = await api<{ items: Member[] }>(`/studios/${studioId}/members?role=student`);
@@ -132,11 +140,9 @@ export function StudentsTab({
               <th className="table-th" scope="col">
                 Статус
               </th>
-              {canExclude && (
-                <th className="table-th" scope="col">
-                  <span className="sr-only">Действия</span>
-                </th>
-              )}
+              <th className="table-th" scope="col">
+                <span className="sr-only">Действия</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -158,17 +164,63 @@ export function StudentsTab({
                     {student.status}
                   </Badge>
                 </td>
-                {canExclude && (
-                  <td className="table-td text-right">
-                    <Button size="sm" variant="danger" onClick={() => void removeStudent(student)}>
+                <td className="table-td text-right">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                      setCardFor((current) =>
+                        current === student.membershipId ? null : student.membershipId
+                      )
+                    }
+                    aria-expanded={cardFor === student.membershipId}
+                  >
+                    {cardFor === student.membershipId ? 'Скрыть' : 'Карточка'}
+                  </Button>
+                  {canExclude && (
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      className="ml-1"
+                      onClick={() => void removeStudent(student)}
+                    >
                       Исключить
                     </Button>
-                  </td>
-                )}
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </Table>
+      )}
+
+      {cardFor && (
+        <div className="mt-5 space-y-3 border-t border-line pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold">
+              Карточка:{' '}
+              {students.find((student) => student.membershipId === cardFor)?.displayName ?? ''}
+            </h4>
+            <Button size="sm" variant="ghost" onClick={() => setCardFor(null)}>
+              Закрыть
+            </Button>
+          </div>
+          {canViewAttendance && (
+            <AttendanceTab
+              studioId={studioId}
+              membershipId={cardFor}
+              timeZone={timeZone}
+              staffView
+            />
+          )}
+          <BalanceTab studioId={studioId} membershipId={cardFor} timeZone={timeZone} />
+          <AchievementsTab
+            studioId={studioId}
+            membershipId={cardFor}
+            timeZone={timeZone}
+            staffView
+          />
+        </div>
       )}
     </section>
   );
