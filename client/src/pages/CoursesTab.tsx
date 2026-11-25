@@ -267,15 +267,16 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
+        <caption className="sr-only">Курсы студии</caption>
           <thead>
             <tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-              <th className="px-4 py-2">Курс</th>
-              <th className="px-4 py-2">Уровень</th>
-              <th className="px-4 py-2">Тип</th>
-              <th className="px-4 py-2">Длит.</th>
-              <th className="px-4 py-2">Мест</th>
-              <th className="px-4 py-2">Преподаватель</th>
-              <th className="px-4 py-2" />
+              <th scope="col" className="px-4 py-2">Курс</th>
+              <th scope="col" className="px-4 py-2">Уровень</th>
+              <th scope="col" className="px-4 py-2">Тип</th>
+              <th scope="col" className="px-4 py-2">Длит.</th>
+              <th scope="col" className="px-4 py-2">Мест</th>
+              <th scope="col" className="px-4 py-2">Преподаватель</th>
+              <th scope="col" className="px-4 py-2"><span className="sr-only">Действия</span></th>
             </tr>
           </thead>
           <tbody>

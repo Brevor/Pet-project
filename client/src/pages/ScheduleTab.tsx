@@ -63,6 +63,14 @@ function minutesOf(value: string): number {
   return (hours ?? 0) * 60 + (minutes ?? 0);
 }
 
+function darkenForBorder(hex: string, amount = 0.35): string {
+  const value = hex.replace('#', '');
+  const num = parseInt(value, 16);
+  const r = Math.round(((num >> 16) & 255) * (1 - amount) + 15 * amount);
+  const g = Math.round(((num >> 8) & 255) * (1 - amount) + 23 * amount);
+  const b = Math.round((num & 255) * (1 - amount) + 42 * amount);
+  return `#${[r, g, b].map((part) => part.toString(16).padStart(2, '0')).join('')}`;
+}
 function hhmm(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
@@ -275,6 +283,27 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
     left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
     const top = Math.max(margin, Math.min(anchor.top, window.innerHeight - 320));
     return { top, left };
+  }
+
+  const isMobileSheet = typeof window !== 'undefined' && window.innerWidth < 768;
+
+  function moveBlockFocus(
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    day: string,
+    startMin: number
+  ) {
+    if (!['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    const blocks = Array.from(
+      gridRef.current?.querySelectorAll<HTMLButtonElement>('button[data-session]') ?? []
+    );
+    if (blocks.length === 0) return;
+    const current = blocks.findIndex(
+      (block) => block.dataset.day === day && Number(block.dataset.start) === startMin
+    );
+    if (current < 0) return;
+    const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
+    event.preventDefault();
+    blocks[(current + delta + blocks.length) % blocks.length]?.focus();
   }
 
   useEffect(() => {
@@ -816,6 +845,10 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                         <button
                           key={item.session.sessionId}
                           type="button"
+                          data-session="1"
+                          data-day={day}
+                          data-start={item.startMin}
+                          onKeyDown={(event) => moveBlockFocus(event, day, item.startMin)}
                           onClick={(event) => {
                             event.stopPropagation();
                             setAnchor(event.currentTarget.getBoundingClientRect());
@@ -831,7 +864,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                             left: `${item.lane * width}%`,
                             width: `calc(${width}% - 2px)`,
                             backgroundColor: `${color}1F`,
-                            borderColor: `${color}99`
+                            borderColor: darkenForBorder(color)
                           }}
                         >
                           <span
@@ -861,13 +894,27 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
 
                     {selected &&
                       byDay.get(day)?.some((item) => item.session.sessionId === selected.sessionId) && (
+                        <>
+                        {isMobileSheet && (
+                          <div
+                            className="fixed inset-0 z-40 bg-black/40"
+                            aria-hidden="true"
+                            onClick={() => setSelectedId(null)}
+                          />
+                        )}
                         <div
                           ref={popoverRef}
                           role="dialog"
                           aria-label={`Занятие: ${selected.courseName}`}
                           tabIndex={-1}
-                          className="fixed z-50 w-[280px] rounded-md border border-line bg-surface p-2.5 text-xs shadow-pop outline-none"
-                          style={popoverPosition()}
+                          className={`fixed z-50 w-[280px] rounded-md border border-line bg-surface p-2.5 text-xs shadow-pop outline-none ${
+                            isMobileSheet ? 'max-h-[70vh] overflow-y-auto' : ''
+                          }`}
+                          style={
+                            isMobileSheet
+                              ? { left: 8, right: 8, bottom: 8, width: 'auto' }
+                              : popoverPosition()
+                          }
                           onClick={(event) => event.stopPropagation()}
                         >
                           <div className="flex items-start justify-between gap-2">
@@ -933,6 +980,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                             </div>
                           )}
                         </div>
+                        </>
                       )}
                   </div>
                 );

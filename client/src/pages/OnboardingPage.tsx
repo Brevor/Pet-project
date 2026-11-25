@@ -58,19 +58,19 @@ export function OnboardingPage({ onChanged }: { onChanged: () => void }) {
           <h3 className="text-sm font-semibold">Создать студию</h3>
           <p className="mt-1 text-xs text-slate-500">Вы станете владельцем и получите ссылку для учеников.</p>
           <form onSubmit={createStudio} className="mt-3 space-y-3">
-            <label className="block text-sm">
-              <span className="text-slate-600">Название</span>
+            <label className="block">
+              <span className="label">Название</span>
               <input
                 required
                 minLength={2}
                 maxLength={60}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-violet-500"
+                className="input"
               />
             </label>
-            <label className="block text-sm">
-              <span className="text-slate-600">Часовой пояс</span>
+            <label className="block">
+              <span className="label">Часовой пояс</span>
               <select
                 value={timezone}
                 onChange={(event) => setTimezone(event.target.value)}
@@ -98,14 +98,14 @@ export function OnboardingPage({ onChanged }: { onChanged: () => void }) {
             Вставьте ссылку студии или её код — например, <code>dance-lab</code>.
           </p>
           <form onSubmit={joinByCode} className="mt-3 space-y-3">
-            <label className="block text-sm">
-              <span className="text-slate-600">Ссылка или код</span>
+            <label className="block">
+              <span className="label">Ссылка или код</span>
               <input
                 required
                 value={code}
                 onChange={(event) => setCode(event.target.value)}
                 placeholder="https://…/join/dance-lab"
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-violet-500"
+                className="input"
               />
             </label>
             <button
