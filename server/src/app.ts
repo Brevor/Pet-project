@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import jwt from '@fastify/jwt';
 import type { Pool } from 'pg';
 import { AppError, errorBody } from './errors';
+import { achievementsRoutes } from './modules/achievements/routes';
 import { attendanceRoutes } from './modules/attendance/routes';
 import { authRoutes } from './modules/auth/routes';
 import { balanceRoutes } from './modules/balance/routes';
@@ -61,6 +62,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     app.register(scheduleRoutes, { prefix, pool: options.pool });
     app.register(attendanceRoutes, { prefix, pool: options.pool });
     app.register(balanceRoutes, { prefix, pool: options.pool });
+    app.register(achievementsRoutes, { prefix, pool: options.pool });
     app.register(joinRoutes, {
       prefix,
       pool: options.pool,
