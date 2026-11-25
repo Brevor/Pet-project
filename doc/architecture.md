@@ -1,10 +1,10 @@
 # Архитектура: модуль «ядро студии»
 
-> **Версия:** 1.7.1
+> **Версия:** 1.8.0
 > **Дата:** 2026-11-22
 > **Роль:** Architect
 > **Основание:** `doc/requirements/studio.md` (approved v0.9.0), `doc/requirements/profile.md` (approved v0.4.0), `doc/proposal.md`
-> **Связанные:** `doc/contracts.md` (v1.5.1)
+> **Связанные:** `doc/contracts.md` (v1.6.0)
 
 > **Индекс разделов:**
 > - §1 Вердикт анализа
