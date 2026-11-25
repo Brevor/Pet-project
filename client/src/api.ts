@@ -12,18 +12,27 @@ export function setToken(token: string | null): void {
   }
 }
 
+export interface ApiFieldErrors {
+  fields?: Record<string, string>;
+}
+
 export interface ApiFailure {
-  error?: { code?: string; message?: string };
+  error?: { code?: string; message?: string; details?: ApiFieldErrors };
 }
 
 export class ApiError extends Error {
   constructor(
     message: string,
     public readonly code: string,
-    public readonly status: number
+    public readonly status: number,
+    public readonly details?: ApiFieldErrors
   ) {
     super(message);
     this.name = 'ApiError';
+  }
+
+  get fieldErrors(): Record<string, string> {
+    return this.details?.fields ?? {};
   }
 }
 
@@ -53,7 +62,8 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(
       data.error?.message ?? `Запрос не выполнен (${response.status})`,
       data.error?.code ?? 'UNKNOWN',
-      response.status
+      response.status,
+      data.error?.details
     );
   }
 

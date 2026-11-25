@@ -1,9 +1,9 @@
 # Контракты API: ядро студии
 
-> **Версия:** 1.5.1
+> **Версия:** 1.6.0
 > **Дата:** 2026-11-22
 > **Роль:** Architect
-> **Основание:** `doc/architecture.md` (v1.7.1), `doc/requirements/studio.md` (approved, v0.9.0), `doc/requirements/profile.md` (approved, v0.4.0)
+> **Основание:** `doc/architecture.md` (v1.8.0), `doc/requirements/studio.md` (approved, v0.9.0), `doc/requirements/profile.md` (approved, v0.4.0)
 > **Статус:** действует; соответствует реализации M0–M9. Изменения 1.1.0 (§0) реализованы в M8.
 > Изменения 1.3.1 — уточнение семантики полей, которые уже есть в коде (`weeklyLoadHours`, `q`,
 > границы периода расписания). Изменения 1.3.2 — требования v0.5.0 (недельный календарь,
@@ -22,7 +22,8 @@
 > - §7 Расписание (`/schedule`, `/sessions`, `/series`)
 > - §8 Эндпоинт → право (сводная таблица)
 > - §9 Коды ошибок (сводная таблица)
-> - §10 Требует решения (Q3, Q8)
+> - §10 Требует решения
+> - §11 Фаза 2: группы, посещаемость, баланс, достижения (Q3, Q8)
 
 ## 0. Изменения версии 1.1.0
 
@@ -600,3 +601,22 @@ owner: остальные роли получают `403 NOT_A_MEMBER` на вс
 **Открытые расхождения** (осознанно, вне M9): `TOKEN_EXPIRED` не возвращается — истёкший JWT даёт
 `UNAUTHORIZED`; `INVALID_TIMEZONE`/`INVALID_WORKING_HOURS` отдаются при создании и правке студии,
 но не при разборе часовых поясов внутри планирования.
+
+## 11. Фаза 2 (группы, посещаемость, баланс, достижения)
+
+Требования: groups 1.0.1, attendance 1.0.0, balance 1.0.0, achievements 1.0.0; схема — миграция 010.
+
+- Группы: `GET/POST /studios/{id}/courses/{courseId}/groups`, `PATCH/DELETE .../groups/{groupId}`,
+  `POST/DELETE .../groups/{groupId}/members`; право `courses.write`; коды 409 `GROUP_NAME_TAKEN`,
+  422 `NOT_A_STUDENT`, 409 `ALREADY_IN_COURSE_GROUP`.
+- Посещаемость: `GET /studios/{id}/sessions/{sessionId}/attendance`, `POST .../attendance`
+  (ученик — `attended` для себя в окне [начало; +120 мин], админ — любой статус),
+  `PATCH /studios/{id}/attendance/{attendanceId}`, `GET /studios/{id}/students/{membershipId}/attendance`;
+  право `attendance.manage` (owner, admin); коды 409 `CHECKIN_WINDOW_CLOSED`, `ALREADY_MARKED`,
+  `SESSION_CANCELLED`, `NO_LESSONS_LEFT`, 403 `NOT_IN_ROSTER`.
+- Баланс: `GET .../students/{membershipId}/balance`, `GET .../balance/operations`,
+  `POST .../balance/topups` (owner/admin, `balance.write`); чтение `balance.read` (owner, admin,
+  curator, ученик — свой); списание/возврат — в транзакции отметки.
+- Достижения: `GET/POST /studios/{id}/achievements`, `PATCH/DELETE .../achievements/{id}`,
+  `POST /studios/{id}/students/{membershipId}/achievements`, `DELETE .../achievements/{awardId}`;
+  право `achievements.write` (owner, admin, curator); коды 409 `ACHIEVEMENT_NAME_TAKEN`, `ALREADY_AWARDED`.

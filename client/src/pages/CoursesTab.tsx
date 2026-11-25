@@ -6,8 +6,10 @@ import {
   LEVEL_LABELS,
   courseColorHex,
   type Course,
+  type Member,
   type Teacher
 } from '../types';
+import { CourseGroups } from './CourseGroups';
 
 const LEVELS = ['beginner', 'intermediate', 'advanced', 'none'];
 const KINDS = ['group', 'individual'];
@@ -39,6 +41,7 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
   const [courses, setCourses] = useState<Course[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [form, setForm] = useState<CourseForm>(emptyForm);
+  const [students, setStudents] = useState<Member[]>([]);
   const [error, setError] = useState('');
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -51,7 +54,13 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
     ]);
     setCourses(courseList.items);
     setTeachers(teacherList.items);
-  }, [studioId]);
+    if (canManage) {
+      const studentList = await api<{ items: Member[] }>(
+        `/studios/${studioId}/members?role=student`
+      );
+      setStudents(studentList.items.filter((item) => item.roles.includes('student')));
+    }
+  }, [studioId, canManage]);
 
   useEffect(() => {
     void load().catch((cause) =>
@@ -156,33 +165,33 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
       {canManage && (
         <form
           onSubmit={createCourse}
-        className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4"
+        className="flex flex-wrap items-end gap-3 card p-4"
       >
         <label className="min-w-[220px] flex-1 text-sm">
-          <span className="block text-slate-600">Название курса</span>
+          <span className="block text-muted">Название курса</span>
           <input
             required
             minLength={2}
             maxLength={140}
             value={form.name}
             onChange={(event) => update({ name: event.target.value })}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-violet-500"
+            className="mt-1 w-full rounded-lg border border-line-strong px-3 py-2 outline-none focus:border-brand"
           />
         </label>
         <label className="text-sm">
-          <span className="block text-slate-600">Направление</span>
+          <span className="block text-muted">Направление</span>
           <input
             value={form.direction}
             onChange={(event) => update({ direction: event.target.value })}
-            className="mt-1 w-40 rounded-lg border border-slate-300 px-3 py-2"
+            className="mt-1 w-40 rounded-lg border border-line-strong px-3 py-2"
           />
         </label>
         <label className="text-sm">
-          <span className="block text-slate-600">Уровень</span>
+          <span className="block text-muted">Уровень</span>
           <select
             value={form.level}
             onChange={(event) => update({ level: event.target.value })}
-            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+            className="mt-1 rounded-lg border border-line-strong px-3 py-2"
           >
             {LEVELS.map((item) => (
               <option key={item} value={item}>
@@ -192,11 +201,11 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
           </select>
         </label>
         <label className="text-sm">
-          <span className="block text-slate-600">Тип</span>
+          <span className="block text-muted">Тип</span>
           <select
             value={form.kind}
             onChange={(event) => update({ kind: event.target.value })}
-            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+            className="mt-1 rounded-lg border border-line-strong px-3 py-2"
           >
             {KINDS.map((item) => (
               <option key={item} value={item}>
@@ -206,11 +215,11 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
           </select>
         </label>
         <label className="text-sm">
-          <span className="block text-slate-600">Длительность</span>
+          <span className="block text-muted">Длительность</span>
           <select
             value={form.duration}
             onChange={(event) => update({ duration: Number(event.target.value) })}
-            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+            className="mt-1 rounded-lg border border-line-strong px-3 py-2"
           >
             {DURATIONS.map((item) => (
               <option key={item} value={item}>
@@ -220,22 +229,22 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
           </select>
         </label>
         <label className="text-sm">
-          <span className="block text-slate-600">Мест</span>
+          <span className="block text-muted">Мест</span>
           <input
             type="number"
             min={1}
             max={500}
             value={form.capacity}
             onChange={(event) => update({ capacity: Number(event.target.value) })}
-            className="mt-1 w-24 rounded-lg border border-slate-300 px-3 py-2"
+            className="mt-1 w-24 rounded-lg border border-line-strong px-3 py-2"
           />
         </label>
         <label className="text-sm">
-          <span className="block text-slate-600">Цвет в календаре</span>
+          <span className="block text-muted">Цвет в календаре</span>
           <select
             value={form.color}
             onChange={(event) => update({ color: event.target.value })}
-            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+            className="mt-1 rounded-lg border border-line-strong px-3 py-2"
           >
             {COURSE_COLORS.map((item) => (
               <option key={item.code} value={item.code}>
@@ -245,71 +254,72 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
           </select>
         </label>
         <label className="text-sm">
-          <span className="block text-slate-600">Преподаватель</span>
+          <span className="block text-muted">Преподаватель</span>
           <select
             value={form.teacherMembershipId}
             onChange={(event) => update({ teacherMembershipId: event.target.value })}
-            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+            className="mt-1 rounded-lg border border-line-strong px-3 py-2"
           >
             {teacherOptions()}
           </select>
         </label>
         <button
           type="submit"
-          className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-hover"
         >
           Добавить курс
         </button>
         </form>
       )}
 
-      {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      {error && <p className="rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="overflow-hidden rounded-xl border border-line bg-surface">
         <table className="w-full text-sm">
+        <caption className="sr-only">Курсы студии</caption>
           <thead>
-            <tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-              <th className="px-4 py-2">Курс</th>
-              <th className="px-4 py-2">Уровень</th>
-              <th className="px-4 py-2">Тип</th>
-              <th className="px-4 py-2">Длит.</th>
-              <th className="px-4 py-2">Мест</th>
-              <th className="px-4 py-2">Преподаватель</th>
-              <th className="px-4 py-2" />
+            <tr className="bg-subtle text-left text-xs uppercase tracking-wide text-faint">
+              <th scope="col" className="px-4 py-2">Курс</th>
+              <th scope="col" className="px-4 py-2">Уровень</th>
+              <th scope="col" className="px-4 py-2">Тип</th>
+              <th scope="col" className="px-4 py-2">Длит.</th>
+              <th scope="col" className="px-4 py-2">Мест</th>
+              <th scope="col" className="px-4 py-2">Преподаватель</th>
+              <th scope="col" className="px-4 py-2"><span className="sr-only">Действия</span></th>
             </tr>
           </thead>
           <tbody>
             {courses.map((course) =>
               editingId === course.id ? (
-                <tr key={course.id} className="border-t border-slate-100 bg-slate-50">
+                <tr key={course.id} className="border-t border-line bg-subtle">
                   <td className="px-4 py-3" colSpan={7}>
                     <form onSubmit={(event) => saveEdit(event, course.id)} className="space-y-3">
                       <div className="flex flex-wrap items-end gap-3">
                         <label className="min-w-[200px] flex-1 text-sm">
-                          <span className="block text-slate-600">Название</span>
+                          <span className="block text-muted">Название</span>
                           <input
                             required
                             minLength={2}
                             maxLength={140}
                             value={editForm.name}
                             onChange={(event) => updateEdit({ name: event.target.value })}
-                            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                            className="mt-1 w-full rounded-lg border border-line-strong px-3 py-2"
                           />
                         </label>
                         <label className="text-sm">
-                          <span className="block text-slate-600">Направление</span>
+                          <span className="block text-muted">Направление</span>
                           <input
                             value={editForm.direction}
                             onChange={(event) => updateEdit({ direction: event.target.value })}
-                            className="mt-1 w-40 rounded-lg border border-slate-300 px-3 py-2"
+                            className="mt-1 w-40 rounded-lg border border-line-strong px-3 py-2"
                           />
                         </label>
                         <label className="text-sm">
-                          <span className="block text-slate-600">Уровень</span>
+                          <span className="block text-muted">Уровень</span>
                           <select
                             value={editForm.level}
                             onChange={(event) => updateEdit({ level: event.target.value })}
-                            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+                            className="mt-1 rounded-lg border border-line-strong px-3 py-2"
                           >
                             {LEVELS.map((item) => (
                               <option key={item} value={item}>
@@ -319,11 +329,11 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
                           </select>
                         </label>
                         <label className="text-sm">
-                          <span className="block text-slate-600">Тип</span>
+                          <span className="block text-muted">Тип</span>
                           <select
                             value={editForm.kind}
                             onChange={(event) => updateEdit({ kind: event.target.value })}
-                            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+                            className="mt-1 rounded-lg border border-line-strong px-3 py-2"
                           >
                             {KINDS.map((item) => (
                               <option key={item} value={item}>
@@ -333,11 +343,11 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
                           </select>
                         </label>
                         <label className="text-sm">
-                          <span className="block text-slate-600">Длительность</span>
+                          <span className="block text-muted">Длительность</span>
                           <select
                             value={editForm.duration}
                             onChange={(event) => updateEdit({ duration: Number(event.target.value) })}
-                            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+                            className="mt-1 rounded-lg border border-line-strong px-3 py-2"
                           >
                             {DURATIONS.map((item) => (
                               <option key={item} value={item}>
@@ -347,22 +357,22 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
                           </select>
                         </label>
                         <label className="text-sm">
-                          <span className="block text-slate-600">Мест</span>
+                          <span className="block text-muted">Мест</span>
                           <input
                             type="number"
                             min={1}
                             max={500}
                             value={editForm.capacity}
                             onChange={(event) => updateEdit({ capacity: Number(event.target.value) })}
-                            className="mt-1 w-24 rounded-lg border border-slate-300 px-3 py-2"
+                            className="mt-1 w-24 rounded-lg border border-line-strong px-3 py-2"
                           />
                         </label>
                         <label className="text-sm">
-                          <span className="block text-slate-600">Цвет в календаре</span>
+                          <span className="block text-muted">Цвет в календаре</span>
                           <select
                             value={editForm.color}
                             onChange={(event) => updateEdit({ color: event.target.value })}
-                            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+                            className="mt-1 rounded-lg border border-line-strong px-3 py-2"
                           >
                             {COURSE_COLORS.map((item) => (
                               <option key={item.code} value={item.code}>
@@ -372,32 +382,32 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
                           </select>
                         </label>
                         <label className="text-sm">
-                          <span className="block text-slate-600">Преподаватель</span>
+                          <span className="block text-muted">Преподаватель</span>
                           <select
                             value={editForm.teacherMembershipId}
                             onChange={(event) =>
                               updateEdit({ teacherMembershipId: event.target.value })
                             }
-                            className="mt-1 rounded-lg border border-slate-300 px-3 py-2"
+                            className="mt-1 rounded-lg border border-line-strong px-3 py-2"
                           >
                             {teacherOptions()}
                           </select>
                         </label>
                       </div>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-faint">
                         Смена длительности не изменяет уже созданные сеансы.
                       </p>
                       <div className="flex gap-2">
                         <button
                           type="submit"
-                          className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700"
+                          className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-hover"
                         >
                           Сохранить
                         </button>
                         <button
                           type="button"
                           onClick={() => setEditingId(null)}
-                          className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600"
+                          className="rounded-lg border border-line-strong px-3 py-1.5 text-xs text-muted"
                         >
                           Отмена
                         </button>
@@ -406,7 +416,7 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
                   </td>
                 </tr>
               ) : (
-                <tr key={course.id} className="border-t border-slate-100">
+                <tr key={course.id} className="border-t border-line">
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
                       <span
@@ -416,32 +426,32 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
                       />
                       <span className="font-medium">{course.name}</span>
                     </div>
-                    <div className="text-xs text-slate-500">{course.direction ?? '—'}</div>
+                    <div className="text-xs text-faint">{course.direction ?? '—'}</div>
                   </td>
-                  <td className="px-4 py-2 text-slate-600">{LEVEL_LABELS[course.level]}</td>
-                  <td className="px-4 py-2 text-slate-600">{KIND_LABELS[course.kind]}</td>
-                  <td className="px-4 py-2 text-slate-600">{course.defaultDurationMin} мин</td>
-                  <td className="px-4 py-2 text-slate-600">{course.capacity}</td>
-                  <td className="px-4 py-2 text-slate-600">{course.teacherName ?? '—'}</td>
+                  <td className="px-4 py-2 text-muted">{LEVEL_LABELS[course.level]}</td>
+                  <td className="px-4 py-2 text-muted">{KIND_LABELS[course.kind]}</td>
+                  <td className="px-4 py-2 text-muted">{course.defaultDurationMin} мин</td>
+                  <td className="px-4 py-2 text-muted">{course.capacity}</td>
+                  <td className="px-4 py-2 text-muted">{course.teacherName ?? '—'}</td>
                   <td className="px-4 py-2 text-right">
                     {canManage && (
                       <>
                         {course.archived && (
-                          <span className="mr-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600">
+                          <span className="mr-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-muted">
                             архив
                           </span>
                         )}
                         <button
                           type="button"
                           onClick={() => startEdit(course)}
-                          className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                          className="rounded px-2 py-1 text-xs text-muted hover:bg-subtle"
                         >
                           Редактировать
                         </button>
                         <button
                           type="button"
                           onClick={() => toggleArchive(course)}
-                          className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                          className="rounded px-2 py-1 text-xs text-muted hover:bg-subtle"
                         >
                           {course.archived ? 'Вернуть' : 'В архив'}
                         </button>
@@ -454,6 +464,10 @@ export function CoursesTab({ studioId, canManage }: { studioId: string; canManag
           </tbody>
         </table>
       </div>
+
+      {canManage && (
+        <CourseGroups studioId={studioId} courses={courses} students={students} />
+      )}
     </section>
   );
 }

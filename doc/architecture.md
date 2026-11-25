@@ -1,10 +1,10 @@
 # Архитектура: модуль «ядро студии»
 
-> **Версия:** 1.7.1
+> **Версия:** 1.8.0
 > **Дата:** 2026-11-22
 > **Роль:** Architect
 > **Основание:** `doc/requirements/studio.md` (approved v0.9.0), `doc/requirements/profile.md` (approved v0.4.0), `doc/proposal.md`
-> **Связанные:** `doc/contracts.md` (v1.5.1)
+> **Связанные:** `doc/contracts.md` (v1.6.0)
 
 > **Индекс разделов:**
 > - §1 Вердикт анализа
@@ -592,3 +592,14 @@ JWT: `sub` (user id), `iat`, `exp` (24 ч). Студия в токен не за
 | Вертикальный фит (SCH-24) | страница не прокручивается, шапка дней и сетка целиком в высоте вьюпорта |
 | Текущий день (SCH-25) | колонка сегодня залита цветом, заголовок выделен |
 | Линия времени (SCH-26) | линия в колонке сегодня, позиция по поясу студии, сдвигается без перезагрузки |
+
+## 15. Фаза 2: данные и права
+
+Таблицы миграции 010: `course_groups`, `course_group_members` (`course_id`, `UNIQUE (membership_id, course_id)` —
+ученик может посещать несколько курсов, по одной группе в каждом), `attendance` + `attendance_revisions`,
+`lesson_balance_operations` (отрицательный остаток запрещён, срок пакета), `achievements`,
+`student_achievements` (одно не отозванное достижение). Ростер сеанса — ученики групп курса;
+`courses.capacity` справочно. Права: `attendance.manage` (owner, admin), `balance.read`
+(owner, admin, curator, ученик — свой), `balance.write` (owner, admin), `achievements.write`
+(owner, admin, curator). Экраны: «Посещения»/«Достижения» у ученика, ростер и отметки у админа,
+«Балансы» и «Группы» в админ-части.

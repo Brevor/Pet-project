@@ -65,45 +65,45 @@ export function JoinPage() {
   }
 
   return (
-    <section className="mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-6">
-      <p className="text-xs uppercase tracking-wide text-violet-600">Приглашение в студию</p>
+    <section className="mx-auto max-w-md card p-6">
+      <p className="text-xs uppercase tracking-wide text-brand">Приглашение в студию</p>
       <h2 className="mt-1 text-lg font-semibold">{studio?.name ?? 'Загрузка…'}</h2>
 
       {error && <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
       <form onSubmit={submit} className="mt-4 space-y-3">
         {!authed && mode === 'register' && (
-          <label className="block text-sm">
-            <span className="text-slate-600">Имя</span>
+          <label className="block">
+            <span className="label">Имя</span>
             <input
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-violet-500"
+              className="input"
             />
           </label>
         )}
 
         {!authed && (
           <>
-            <label className="block text-sm">
-              <span className="text-slate-600">Email</span>
+            <label className="block">
+              <span className="label">Email</span>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-violet-500"
+                className="input"
               />
             </label>
-            <label className="block text-sm">
-              <span className="text-slate-600">Пароль</span>
+            <label className="block">
+              <span className="label">Пароль</span>
               <input
                 type="password"
                 required
                 minLength={8}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-violet-500"
+                className="input"
               />
             </label>
           </>

@@ -2,8 +2,12 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import jwt from '@fastify/jwt';
 import type { Pool } from 'pg';
 import { AppError, errorBody } from './errors';
+import { achievementsRoutes } from './modules/achievements/routes';
+import { attendanceRoutes } from './modules/attendance/routes';
 import { authRoutes } from './modules/auth/routes';
+import { balanceRoutes } from './modules/balance/routes';
 import { coursesRoutes } from './modules/courses/routes';
+import { groupsRoutes } from './modules/groups/routes';
 import { joinRoutes } from './modules/join/routes';
 import { membersRoutes } from './modules/members/routes';
 import { roomsRoutes } from './modules/rooms/routes';
@@ -54,7 +58,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     app.register(membersRoutes, { prefix, pool: options.pool });
     app.register(roomsRoutes, { prefix, pool: options.pool });
     app.register(coursesRoutes, { prefix, pool: options.pool });
+    app.register(groupsRoutes, { prefix, pool: options.pool });
     app.register(scheduleRoutes, { prefix, pool: options.pool });
+    app.register(attendanceRoutes, { prefix, pool: options.pool });
+    app.register(balanceRoutes, { prefix, pool: options.pool });
+    app.register(achievementsRoutes, { prefix, pool: options.pool });
     app.register(joinRoutes, {
       prefix,
       pool: options.pool,

@@ -1,19 +1,35 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 import type { Member } from '../types';
 import { Avatar } from '../components/Avatar';
+import { Button } from '../ui/Button';
+import { Badge } from '../ui/Card';
+import { Field } from '../ui/Field';
+import { InlineAlert } from '../ui/InlineAlert';
+import { EmptyState, TableSkeleton } from '../ui/States';
+import { Table } from '../ui/Table';
+import { AchievementsTab } from './AchievementsTab';
+import { AttendanceTab } from './AttendanceTab';
+import { BalanceTab } from './BalanceTab';
 
 export function StudentsTab({
   studioId,
-  canExclude
+  canExclude,
+  timeZone,
+  canViewAttendance = false
 }: {
   studioId: string;
   canExclude: boolean;
+  timeZone: string;
+  canViewAttendance?: boolean;
 }) {
   const [students, setStudents] = useState<Member[]>([]);
   const [email, setEmail] = useState('');
   const [temporaryPassword, setTemporaryPassword] = useState('');
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [cardFor, setCardFor] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const data = await api<{ items: Member[] }>(`/studios/${studioId}/members?role=student`);
@@ -21,14 +37,18 @@ export function StudentsTab({
   }, [studioId]);
 
   useEffect(() => {
-    void load().catch((cause) =>
-      setError(cause instanceof Error ? cause.message : 'Не удалось загрузить учеников')
-    );
+    setLoading(true);
+    void load()
+      .catch((cause) =>
+        setError(cause instanceof Error ? cause.message : 'Не удалось загрузить учеников')
+      )
+      .finally(() => setLoading(false));
   }, [load]);
 
   async function addStudent(event: React.FormEvent) {
     event.preventDefault();
     setError('');
+    setFieldErrors({});
     setTemporaryPassword('');
     try {
       const result = await api<{ temporaryPassword?: string }>(`/studios/${studioId}/members`, {
@@ -41,7 +61,11 @@ export function StudentsTab({
       }
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Не удалось добавить ученика');
+      if (cause instanceof ApiError && Object.keys(cause.fieldErrors).length > 0) {
+        setFieldErrors(cause.fieldErrors);
+      } else {
+        setError(cause instanceof Error ? cause.message : 'Не удалось добавить ученика');
+      }
     }
   }
 
@@ -57,83 +81,146 @@ export function StudentsTab({
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6">
+    <section className="card p-4 md:p-6">
       <h3 className="text-base font-semibold">Ученики</h3>
 
-      <form onSubmit={addStudent} className="mt-4 flex flex-wrap items-end gap-3 rounded-lg bg-slate-50 p-4">
-        <label className="min-w-[240px] flex-1 text-sm">
-          <span className="block text-slate-600">Email ученика</span>
-          <input
-            type="email"
-            required
-            placeholder="student@example.com"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-violet-500"
-          />
-        </label>
-        <button
-          type="submit"
-          className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
-        >
-          Добавить ученика
-        </button>
+      <form onSubmit={addStudent} className="mt-4 flex flex-wrap items-end gap-3 rounded-md bg-subtle p-4">
+        <div className="min-w-[240px] flex-1">
+          <Field id="student-email" label="Email ученика" error={fieldErrors.email}>
+            {(props) => (
+              <input
+                {...props}
+                type="email"
+                autoComplete="email"
+                placeholder="student@example.com"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            )}
+          </Field>
+        </div>
+        <Button type="submit">Добавить ученика</Button>
       </form>
 
-      <p className="mt-3 text-xs text-slate-500">
+      <p className="mt-3 text-xs text-faint">
         Роль всегда «ученик». Если аккаунта нет, он создаётся, а временный пароль показывается один
         раз — передайте его ученику лично.
       </p>
 
       {temporaryPassword && (
-        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Временный пароль: <span className="font-mono font-semibold">{temporaryPassword}</span>
-        </p>
+        <div className="mt-3">
+          <InlineAlert variant="warning">
+            Временный пароль: <span className="font-mono font-semibold">{temporaryPassword}</span>
+          </InlineAlert>
+        </div>
       )}
 
-      {error && <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      {error && (
+        <div className="mt-3">
+          <InlineAlert variant="error">{error}</InlineAlert>
+        </div>
+      )}
 
-      <table className="mt-4 w-full text-sm">
-        <thead>
-          <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-            <th className="py-2">Ученик</th>
-            <th className="py-2">Статус</th>
-            {canExclude && <th className="py-2" />}
-          </tr>
-        </thead>
-        <tbody>
-          {students.map((student) => (
-            <tr key={student.membershipId} className="border-t border-slate-100">
-              <td className="py-2">
-                <div className="flex items-center gap-2">
-                  <Avatar url={student.avatarUrl} name={student.displayName ?? student.email ?? '?'} />
-                  <div>
-                    <div className="font-medium">{student.displayName ?? student.email}</div>
-                    <div className="text-xs text-slate-500">{student.email}</div>
-                  </div>
-                </div>
-              </td>
-              <td className="py-2 text-slate-600">{student.status}</td>
-              {canExclude && (
-                <td className="py-2 text-right">
-                  <button
-                    type="button"
-                    onClick={() => removeStudent(student)}
-                    className="rounded px-2 py-1 text-xs text-rose-600 hover:bg-rose-50"
-                  >
-                    Исключить
-                  </button>
-                </td>
-              )}
+      {loading ? (
+        <TableSkeleton />
+      ) : students.length === 0 ? (
+        <div className="mt-4">
+          <EmptyState
+            title="Учеников пока нет"
+            text="Добавьте первого ученика по email — ему будет создан аккаунт."
+          />
+        </div>
+      ) : (
+        <Table caption="Ученики студии" className="mt-4">
+          <thead>
+            <tr>
+              <th className="table-th" scope="col">
+                Ученик
+              </th>
+              <th className="table-th" scope="col">
+                Статус
+              </th>
+              <th className="table-th" scope="col">
+                <span className="sr-only">Действия</span>
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {students.map((student) => (
+              <tr key={student.membershipId} className="border-t border-line">
+                <td className="table-td">
+                  <div className="flex items-center gap-2">
+                    <Avatar url={student.avatarUrl} name={student.displayName ?? student.email ?? '?'} />
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-ink">
+                        {student.displayName ?? student.email}
+                      </div>
+                      <div className="truncate text-xs text-faint">{student.email}</div>
+                    </div>
+                  </div>
+                </td>
+                <td className="table-td">
+                  <Badge tone={student.status === 'active' ? 'success' : 'neutral'}>
+                    {student.status}
+                  </Badge>
+                </td>
+                <td className="table-td text-right">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                      setCardFor((current) =>
+                        current === student.membershipId ? null : student.membershipId
+                      )
+                    }
+                    aria-expanded={cardFor === student.membershipId}
+                  >
+                    {cardFor === student.membershipId ? 'Скрыть' : 'Карточка'}
+                  </Button>
+                  {canExclude && (
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      className="ml-1"
+                      onClick={() => void removeStudent(student)}
+                    >
+                      Исключить
+                    </Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
 
-      {students.length === 0 && (
-        <p className="mt-4 rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-          Учеников пока нет
-        </p>
+      {cardFor && (
+        <div className="mt-5 space-y-3 border-t border-line pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold">
+              Карточка:{' '}
+              {students.find((student) => student.membershipId === cardFor)?.displayName ?? ''}
+            </h4>
+            <Button size="sm" variant="ghost" onClick={() => setCardFor(null)}>
+              Закрыть
+            </Button>
+          </div>
+          {canViewAttendance && (
+            <AttendanceTab
+              studioId={studioId}
+              membershipId={cardFor}
+              timeZone={timeZone}
+              staffView
+            />
+          )}
+          <BalanceTab studioId={studioId} membershipId={cardFor} timeZone={timeZone} />
+          <AchievementsTab
+            studioId={studioId}
+            membershipId={cardFor}
+            timeZone={timeZone}
+            staffView
+          />
+        </div>
       )}
     </section>
   );

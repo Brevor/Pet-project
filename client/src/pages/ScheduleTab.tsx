@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 import {
   DAY_LABELS,
   courseColorHex,
   type Course,
   type Room,
+  type SessionAttendanceItem,
   type SessionItem,
   type StudioView,
   type Teacher,
@@ -12,6 +13,44 @@ import {
 } from '../types';
 
 const MINUTE_STEP = 15;
+
+function attendanceErrorText(cause: unknown): string {
+  if (!(cause instanceof ApiError)) return 'Не удалось отметить посещение';
+  switch (cause.code) {
+    case 'CHECKIN_WINDOW_CLOSED':
+      return 'Отметиться можно с начала занятия до +2 часов';
+    case 'CANCEL_WINDOW_CLOSED':
+      return 'Отменить участие можно только до начала занятия';
+    case 'ALREADY_MARKED':
+      return 'Вы уже отмечены на это занятие';
+    case 'NO_LESSONS_LEFT':
+      return 'На балансе нет занятий — пополните его у администратора';
+    case 'NOT_IN_ROSTER':
+      return 'Вы не записаны на этот курс';
+    case 'SESSION_CANCELLED':
+      return 'Занятие отменено';
+    default:
+      return cause.message;
+  }
+}
+
+function adminAttendanceErrorText(cause: unknown): string {
+  if (!(cause instanceof ApiError)) return 'Не удалось сохранить отметку';
+  switch (cause.code) {
+    case 'NO_LESSONS_LEFT':
+      return 'У ученика нет занятий на балансе';
+    case 'SESSION_CANCELLED':
+      return 'Сеанс отменён — отметки запрещены';
+    case 'STUDIO_ARCHIVED':
+      return 'Студия в архиве — отметки запрещены';
+    case 'ALREADY_MARKED':
+      return 'Отметка уже существует — используйте другую кнопку';
+    case 'NOT_A_STUDENT':
+      return 'Участник не является учеником студии';
+    default:
+      return cause.message;
+  }
+}
 
 function studioDateKey(moment: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -63,6 +102,14 @@ function minutesOf(value: string): number {
   return (hours ?? 0) * 60 + (minutes ?? 0);
 }
 
+function darkenForBorder(hex: string, amount = 0.35): string {
+  const value = hex.replace('#', '');
+  const num = parseInt(value, 16);
+  const r = Math.round(((num >> 16) & 255) * (1 - amount) + 15 * amount);
+  const g = Math.round(((num >> 8) & 255) * (1 - amount) + 23 * amount);
+  const b = Math.round((num & 255) * (1 - amount) + 42 * amount);
+  return `#${[r, g, b].map((part) => part.toString(16).padStart(2, '0')).join('')}`;
+}
 function hhmm(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
@@ -120,7 +167,15 @@ function visibleRange(
   return { startHour, endHour };
 }
 
-export function ScheduleTab({ studioId, canManage }: { studioId: string; canManage: boolean }) {
+export function ScheduleTab({
+  studioId,
+  canManage,
+  canManageAttendance = false
+}: {
+  studioId: string;
+  canManage: boolean;
+  canManageAttendance?: boolean;
+}) {
   const [studio, setStudio] = useState<StudioView | null>(null);
   const [weekStart, setWeekStart] = useState(() => mondayOf(studioDateKey(new Date(), 'UTC')));
   const [roomFilter, setRoomFilter] = useState('');
@@ -133,6 +188,11 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [anchor, setAnchor] = useState<{ top: number; left: number; right: number; bottom: number } | null>(
+    null
+  );
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const lastFocusedRef = useRef<HTMLElement | null>(null);
   const [moveValue, setMoveValue] = useState('');
   const [narrow, setNarrow] = useState(false);
   const [mobileDay, setMobileDay] = useState(0);
@@ -153,10 +213,18 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
   const [hoursDraft, setHoursDraft] = useState<WorkingHour[]>([]);
   const [timezoneDraft, setTimezoneDraft] = useState('');
   const [editingHours, setEditingHours] = useState(false);
+  const [myStatus, setMyStatus] = useState<string | null>(null);
+  const [attendanceBusy, setAttendanceBusy] = useState(false);
+  const [attendanceError, setAttendanceError] = useState('');
+  const [attendanceNotice, setAttendanceNotice] = useState('');
+  const [roster, setRoster] = useState<SessionAttendanceItem[]>([]);
+  const [rosterBusy, setRosterBusy] = useState(false);
+  const [rosterError, setRosterError] = useState('');
 
   const timeZone = studio?.studio.timezone ?? 'Europe/Moscow';
   const todayKey = studioDateKey(new Date(), timeZone);
   const canEditStudio = (studio?.myRoles ?? []).some((role) => role === 'owner' || role === 'admin');
+  const studentMode = (studio?.myRoles ?? []).includes('student') && !canManage;
 
   useEffect(() => {
     setWeekStart(mondayOf(studioDateKey(new Date(), timeZone)));
@@ -240,7 +308,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
   const range = visibleRange(studio?.workingHours ?? [], sessions, timeZone);
   const totalMinutes = (range.endHour - range.startHour) * 60;
   const availableHeight = Math.max(gridHeightPx - 44, 280);
-  const pxPerMin = Math.min(2.2, Math.max(0.35, availableHeight / totalMinutes));
+  const pxPerMin = Math.min(1, Math.max(0.35, availableHeight / totalMinutes));
   const gridHeight = totalMinutes * pxPerMin;
 
   const hourMarks: number[] = [];
@@ -261,6 +329,171 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
   for (const course of courses) colorByCourse.set(course.id, courseColorHex(course.color));
 
   const selected = sessions.find((session) => session.sessionId === selectedId) ?? null;
+  const nowMs = Date.now();
+  const selectedStartMs = selected ? Date.parse(selected.startsAt) : 0;
+  const checkInOpen =
+    Boolean(selected) && nowMs >= selectedStartMs && nowMs <= selectedStartMs + 120 * 60_000;
+  const canCancelSelf = Boolean(selected) && nowMs < selectedStartMs;
+
+  useEffect(() => {
+    if (!selectedId || !studentMode) {
+      setMyStatus(null);
+      return;
+    }
+    let cancelled = false;
+    setMyStatus(null);
+    setAttendanceError('');
+    setAttendanceNotice('');
+    void api<{ items: Array<{ status: string | null }> }>(
+      `/studios/${studioId}/sessions/${selectedId}/attendance`
+    )
+      .then((data) => {
+        if (!cancelled) setMyStatus(data.items[0]?.status ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setMyStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, studentMode, studioId]);
+
+  useEffect(() => {
+    if (!selectedId || !canManageAttendance) {
+      setRoster([]);
+      return;
+    }
+    let cancelled = false;
+    setRosterError('');
+    void api<{ items: SessionAttendanceItem[] }>(
+      `/studios/${studioId}/sessions/${selectedId}/attendance`
+    )
+      .then((data) => {
+        if (!cancelled) setRoster(data.items);
+      })
+      .catch((cause) => {
+        if (!cancelled) {
+          setRosterError(
+            cause instanceof Error ? cause.message : 'Не удалось загрузить ростер'
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, canManageAttendance, studioId]);
+
+  async function markStudent(item: SessionAttendanceItem, status: string) {
+    if (!selected) return;
+    setRosterBusy(true);
+    setRosterError('');
+    try {
+      if (item.attendanceId) {
+        await api(`/studios/${studioId}/attendance/${item.attendanceId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status })
+        });
+      } else {
+        await api(`/studios/${studioId}/sessions/${selected.sessionId}/attendance`, {
+          method: 'POST',
+          body: JSON.stringify({ membershipId: item.membershipId, status })
+        });
+      }
+      const data = await api<{ items: SessionAttendanceItem[] }>(
+        `/studios/${studioId}/sessions/${selected.sessionId}/attendance`
+      );
+      setRoster(data.items);
+    } catch (cause) {
+      setRosterError(adminAttendanceErrorText(cause));
+    } finally {
+      setRosterBusy(false);
+    }
+  }
+
+  async function markSelf(status: 'attended' | 'cancelled') {
+    if (!selected) return;
+    setAttendanceBusy(true);
+    setAttendanceError('');
+    setAttendanceNotice('');
+    try {
+      await api(`/studios/${studioId}/sessions/${selected.sessionId}/attendance`, {
+        method: 'POST',
+        body: JSON.stringify({ status })
+      });
+      setMyStatus(status);
+      setAttendanceNotice(status === 'attended' ? 'Отметка сохранена' : 'Участие отменено');
+    } catch (cause) {
+      setAttendanceError(attendanceErrorText(cause));
+    } finally {
+      setAttendanceBusy(false);
+    }
+  }
+
+  const [isMobileSheet, setIsMobileSheet] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth < 768
+  );
+
+  useEffect(() => {
+    const onResize = () => setIsMobileSheet(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  function popoverPosition() {
+    const width = 280;
+    const margin = 8;
+    if (!anchor) return { top: 80, left: 80 };
+    let left = anchor.right + margin;
+    if (left + width > window.innerWidth - margin) left = anchor.left - width - margin;
+    left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
+    const top = Math.max(margin, Math.min(anchor.top, window.innerHeight - 320));
+    return { top, left };
+  }
+
+
+
+  function moveBlockFocus(
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    day: string,
+    startMin: number
+  ) {
+    if (!['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    const blocks = Array.from(
+      gridRef.current?.querySelectorAll<HTMLButtonElement>('button[data-session]') ?? []
+    );
+    if (blocks.length === 0) return;
+    const current = blocks.findIndex(
+      (block) => block.dataset.day === day && Number(block.dataset.start) === startMin
+    );
+    if (current < 0) return;
+    const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
+    event.preventDefault();
+    blocks[(current + delta + blocks.length) % blocks.length]?.focus();
+  }
+
+  useEffect(() => {
+    if (!selectedId) return;
+    popoverRef.current?.focus();
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setSelectedId(null);
+    }
+    function onPointerDown(event: PointerEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
+        setSelectedId(null);
+      }
+    }
+    function onScroll() {
+      setSelectedId(null);
+    }
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('scroll', onScroll, true);
+      lastFocusedRef.current?.focus();
+    };
+  }, [selectedId]);
   const visibleDays = narrow ? [days[mobileDay] ?? days[0]!] : days;
 
   useEffect(() => {
@@ -380,14 +613,14 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
   return (
     <section className="flex flex-col gap-4 xl:flex-row xl:items-start">
       <div className="w-full space-y-4 xl:w-72 xl:shrink-0">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
+        <div className="rounded-xl border border-line bg-surface p-4 text-sm">
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-semibold">{studio?.studio.name ?? 'Студия'}</h3>
             {canEditStudio && !editingHours && (
               <button
                 type="button"
                 onClick={() => setEditingHours(true)}
-                className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                className="rounded border border-line-strong px-2 py-1 text-xs text-muted hover:bg-subtle"
               >
                 Изменить
               </button>
@@ -396,12 +629,12 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
 
           {!editingHours ? (
             <>
-              <p className="mt-1 text-xs text-slate-500">{timeZone}</p>
-              <ul className="mt-2 space-y-0.5 text-xs text-slate-600">
+              <p className="mt-1 text-xs text-faint">{timeZone}</p>
+              <ul className="mt-2 space-y-0.5 text-xs text-muted">
                 {(studio?.workingHours ?? []).map((hour) => (
                   <li key={hour.weekday} className="flex justify-between gap-2">
                     <span>{DAY_LABELS[hour.weekday - 1]}</span>
-                    <span className={hour.isClosed ? 'text-slate-400' : ''}>
+                    <span className={hour.isClosed ? 'text-faint' : ''}>
                       {hoursLabel(hour)}
                     </span>
                   </li>
@@ -411,31 +644,31 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
           ) : (
             <form onSubmit={saveHours} className="mt-2 space-y-2 text-xs">
               <label className="block">
-                <span className="text-slate-500">Часовой пояс</span>
+                <span className="text-faint">Часовой пояс</span>
                 <input
                   value={timezoneDraft}
                   onChange={(event) => setTimezoneDraft(event.target.value)}
-                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1"
+                  className="mt-1 w-full rounded border border-line-strong px-2 py-1"
                 />
               </label>
               {hoursDraft.map((hour, index) => (
                 <div key={hour.weekday} className="flex items-center gap-1">
-                  <span className="w-6 text-slate-500">{DAY_LABELS[hour.weekday - 1]}</span>
+                  <span className="w-6 text-faint">{DAY_LABELS[hour.weekday - 1]}</span>
                   <input
                     type="time"
                     value={hour.opensAt}
                     disabled={hour.isClosed}
                     onChange={(event) => patchHour(index, { opensAt: event.target.value })}
-                    className="w-[74px] rounded border border-slate-300 px-1 py-0.5 disabled:bg-slate-100"
+                    className="w-[74px] rounded border border-line-strong px-1 py-0.5 disabled:bg-subtle"
                   />
                   <input
                     type="time"
                     value={hour.closesAt}
                     disabled={hour.isClosed}
                     onChange={(event) => patchHour(index, { closesAt: event.target.value })}
-                    className="w-[74px] rounded border border-slate-300 px-1 py-0.5 disabled:bg-slate-100"
+                    className="w-[74px] rounded border border-line-strong px-1 py-0.5 disabled:bg-subtle"
                   />
-                  <label className="ml-auto flex items-center gap-1 text-slate-500">
+                  <label className="ml-auto flex items-center gap-1 text-faint">
                     <input
                       type="checkbox"
                       checked={hour.isClosed}
@@ -448,7 +681,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
               <div className="flex gap-2 pt-1">
                 <button
                   type="submit"
-                  className="rounded bg-violet-600 px-3 py-1 font-semibold text-white hover:bg-violet-700"
+                  className="rounded bg-brand px-3 py-1 font-semibold text-white hover:bg-brand-hover"
                 >
                   Сохранить
                 </button>
@@ -459,7 +692,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                     setHoursDraft(studio?.workingHours ?? []);
                     setTimezoneDraft(timeZone);
                   }}
-                  className="rounded border border-slate-300 px-3 py-1 text-slate-600"
+                  className="rounded border border-line-strong px-3 py-1 text-muted"
                 >
                   Отмена
                 </button>
@@ -469,14 +702,14 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
         </div>
 
         {canManage && (
-          <form onSubmit={createSession} className="space-y-2 rounded-xl border border-slate-200 bg-white p-4 text-sm">
+          <form onSubmit={createSession} className="space-y-2 rounded-xl border border-line bg-surface p-4 text-sm">
             <h3 className="font-semibold">Новое занятие</h3>
             <label className="block text-xs">
-              <span className="text-slate-500">Курс</span>
+              <span className="text-faint">Курс</span>
               <select
                 value={courseId}
                 onChange={(event) => setCourseId(event.target.value)}
-                className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
+                className="mt-1 w-full rounded border border-line-strong px-2 py-1.5"
                 required
               >
                 {courses.map((course) => (
@@ -487,11 +720,11 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
               </select>
             </label>
             <label className="block text-xs">
-              <span className="text-slate-500">Зал</span>
+              <span className="text-faint">Зал</span>
               <select
                 value={roomId}
                 onChange={(event) => setRoomId(event.target.value)}
-                className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
+                className="mt-1 w-full rounded border border-line-strong px-2 py-1.5"
                 required
               >
                 {rooms.map((room) => (
@@ -502,11 +735,11 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
               </select>
             </label>
             <label className="block text-xs">
-              <span className="text-slate-500">Преподаватель</span>
+              <span className="text-faint">Преподаватель</span>
               <select
                 value={teacherId}
                 onChange={(event) => setTeacherId(event.target.value)}
-                className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
+                className="mt-1 w-full rounded border border-line-strong px-2 py-1.5"
                 required
               >
                 <option value="">выберите</option>
@@ -518,11 +751,11 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
               </select>
             </label>
             <label className="block text-xs">
-              <span className="text-slate-500">Тип</span>
+              <span className="text-faint">Тип</span>
               <select
                 value={mode}
                 onChange={(event) => setMode(event.target.value as 'single' | 'series')}
-                className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
+                className="mt-1 w-full rounded border border-line-strong px-2 py-1.5"
               >
                 <option value="series">серия</option>
                 <option value="single">разовый</option>
@@ -531,19 +764,19 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
 
             {mode === 'single' ? (
               <label className="block text-xs">
-                <span className="text-slate-500">Начало</span>
+                <span className="text-faint">Начало</span>
                 <input
                   type="datetime-local"
                   value={startsAt}
                   onChange={(event) => setStartsAt(event.target.value)}
                   required
-                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
+                  className="mt-1 w-full rounded border border-line-strong px-2 py-1.5"
                 />
               </label>
             ) : (
               <>
                 <div className="text-xs">
-                  <span className="text-slate-500">Дни недели</span>
+                  <span className="text-faint">Дни недели</span>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {DAY_LABELS.map((label, index) => (
                       <label key={label} className="flex items-center gap-0.5">
@@ -558,43 +791,43 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                   </div>
                 </div>
                 <label className="block text-xs">
-                  <span className="text-slate-500">Время</span>
+                  <span className="text-faint">Время</span>
                   <input
                     type="time"
                     value={startTime}
                     onChange={(event) => setStartTime(event.target.value)}
-                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
+                    className="mt-1 w-full rounded border border-line-strong px-2 py-1.5"
                   />
                 </label>
                 <div className="flex gap-2">
                   <label className="block flex-1 text-xs">
-                    <span className="text-slate-500">С даты</span>
+                    <span className="text-faint">С даты</span>
                     <input
                       type="date"
                       value={startsOn}
                       onChange={(event) => setStartsOn(event.target.value)}
-                      className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
+                      className="mt-1 w-full rounded border border-line-strong px-2 py-1.5"
                     />
                   </label>
                   <label className="block flex-1 text-xs">
-                    <span className="text-slate-500">По дату</span>
+                    <span className="text-faint">По дату</span>
                     <input
                       type="date"
                       value={until}
                       onChange={(event) => setUntil(event.target.value)}
-                      className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5"
+                      className="mt-1 w-full rounded border border-line-strong px-2 py-1.5"
                     />
                   </label>
                 </div>
               </>
             )}
 
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-faint">
               Длительность берётся из курса. Клик по пустому месту в календаре подставит дату и время.
             </p>
             <button
               type="submit"
-              className="w-full rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+              className="w-full rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white hover:bg-brand-hover"
             >
               Создать
             </button>
@@ -603,38 +836,38 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
       </div>
 
       <div className="min-w-0 flex-1 space-y-2">
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2">
           <button
             type="button"
             onClick={() => setWeekStart(addDays(weekStart, -7))}
-            className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            className="rounded border border-line-strong px-2 py-1 text-xs text-muted hover:bg-subtle"
           >
             ←
           </button>
           <button
             type="button"
             onClick={() => setWeekStart(mondayOf(todayKey))}
-            className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            className="rounded border border-line-strong px-2 py-1 text-xs text-muted hover:bg-subtle"
           >
             сегодня
           </button>
           <button
             type="button"
             onClick={() => setWeekStart(addDays(weekStart, 7))}
-            className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            className="rounded border border-line-strong px-2 py-1 text-xs text-muted hover:bg-subtle"
           >
             →
           </button>
-          <span className="text-xs font-medium text-slate-700">
+          <span className="text-xs font-medium text-ink">
             {shortDate(weekStart)} — {shortDate(weekEnd)}
           </span>
-          <span className="hidden text-xs text-slate-400 sm:inline">{timeZone}</span>
+          <span className="hidden text-xs text-faint sm:inline">{timeZone}</span>
 
           <div className="ml-auto flex flex-wrap items-center gap-1">
             <select
               value={roomFilter}
               onChange={(event) => setRoomFilter(event.target.value)}
-              className="rounded border border-slate-300 px-1.5 py-1 text-xs"
+              className="rounded border border-line-strong px-1.5 py-1 text-xs"
             >
               <option value="">все залы</option>
               {rooms.map((room) => (
@@ -646,7 +879,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
             <select
               value={teacherFilter}
               onChange={(event) => setTeacherFilter(event.target.value)}
-              className="rounded border border-slate-300 px-1.5 py-1 text-xs"
+              className="rounded border border-line-strong px-1.5 py-1 text-xs"
             >
               <option value="">все преподаватели</option>
               {teachers.map((teacher) => (
@@ -658,7 +891,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
             <select
               value={courseFilter}
               onChange={(event) => setCourseFilter(event.target.value)}
-              className="rounded border border-slate-300 px-1.5 py-1 text-xs"
+              className="rounded border border-line-strong px-1.5 py-1 text-xs"
             >
               <option value="">все курсы</option>
               {courses.map((course) => (
@@ -678,7 +911,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                 type="button"
                 onClick={() => setMobileDay(index)}
                 className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium ${
-                  index === mobileDay ? 'bg-violet-600 text-white' : 'border border-slate-200 text-slate-600'
+                  index === mobileDay ? 'bg-brand text-white' : 'border border-line text-muted'
                 }`}
               >
                 {DAY_LABELS[weekdayIndex(day)]} {shortDate(day)}
@@ -687,22 +920,34 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
           </div>
         )}
 
-        {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
-        <div className="rounded-xl border border-slate-200 bg-white">
+        <div className="rounded-xl border border-line bg-surface">
           <div ref={gridRef} className="flex h-[calc(100vh-230px)] min-h-[420px] flex-col overflow-hidden">
-            <div className="flex shrink-0 border-b border-slate-200 bg-white">
+            <div className="flex shrink-0 border-b border-line bg-surface">
               <div className="w-12 shrink-0" />
               {visibleDays.map((day) => {
                 const isToday = day === todayKey;
                 return (
                   <div
                     key={day}
-                    className={`flex-1 border-l border-slate-100 px-1 py-1 text-center text-[11px] font-medium ${
-                      isToday ? 'bg-violet-100 text-violet-800' : 'text-slate-600'
+                    className={`flex-1 border-l border-line px-1 py-1 text-center text-[11px] font-medium ${
+                      isToday ? 'bg-brand-soft text-ink' : 'text-muted'
                     }`}
                   >
-                    {DAY_LABELS[weekdayIndex(day)]} {shortDate(day)}
+                    <span className="block">
+                      {DAY_LABELS[weekdayIndex(day)]} {shortDate(day)}
+                    </span>
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={() => pickSlot(day, range.startHour * 60)}
+                        aria-label={`Создать занятие: ${DAY_LABELS[weekdayIndex(day)]} ${shortDate(day)}`}
+                        className="mt-0.5 text-[10px] font-medium text-brand hover:underline"
+                      >
+                        + занятие
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -713,7 +958,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                 {hourMarks.map((hour) => (
                   <div
                     key={hour}
-                    className="absolute right-1 -translate-y-1/2 font-mono text-[10px] text-slate-400"
+                    className="absolute right-1 -translate-y-1/2 font-mono text-[10px] text-faint"
                     style={{ top: (hour - range.startHour) * 60 * pxPerMin }}
                   >
                     {hhmm(hour * 60)}
@@ -727,8 +972,8 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                 return (
                   <div
                     key={day}
-                    className={`relative flex-1 border-l border-slate-100 ${
-                      isToday ? 'bg-violet-50' : ''
+                    className={`relative flex-1 border-l border-line ${
+                      isToday ? 'bg-brand-soft' : ''
                     }`}
                     style={{ height: gridHeight }}
                     onClick={(event) => {
@@ -743,7 +988,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                     {hourMarks.map((hour) => (
                       <div
                         key={hour}
-                        className="absolute inset-x-0 border-t border-slate-100"
+                        className="absolute inset-x-0 border-t border-line"
                         style={{ top: (hour - range.startHour) * 60 * pxPerMin }}
                       />
                     ))}
@@ -753,7 +998,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                         className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-rose-500"
                         style={{ top: (nowMinutes - range.startHour * 60) * pxPerMin }}
                       >
-                        <span className="absolute -top-4 right-1 rounded bg-rose-500 px-1 text-[9px] font-semibold text-white">
+                        <span className="absolute -top-4 right-1 rounded bg-danger px-1 text-[10px] font-semibold tabular-nums text-white">
                           {hhmm(nowMinutes)}
                         </span>
                       </div>
@@ -761,7 +1006,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
 
                     {items.map((item) => {
                       const top = (item.startMin - range.startHour * 60) * pxPerMin;
-                      const height = Math.max((item.endMin - item.startMin) * pxPerMin, 16);
+                      const height = Math.max((item.endMin - item.startMin) * pxPerMin, 24);
                       const width = 100 / item.lanes;
                       const cancelled = item.session.status === 'cancelled';
                       const active = item.session.sessionId === selectedId;
@@ -770,36 +1015,49 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                         <button
                           key={item.session.sessionId}
                           type="button"
+                          data-session="1"
+                          data-day={day}
+                          data-start={item.startMin}
+                          onKeyDown={(event) => moveBlockFocus(event, day, item.startMin)}
                           onClick={(event) => {
                             event.stopPropagation();
+                            lastFocusedRef.current = event.currentTarget;
+                            setAnchor(event.currentTarget.getBoundingClientRect());
                             setSelectedId(active ? null : item.session.sessionId);
                           }}
-                          title={`${item.session.courseName} · ${item.session.roomName} · ${item.session.teacherName}`}
-                          className={`absolute overflow-hidden rounded border px-1 py-0.5 text-left text-[11px] text-slate-800 shadow-sm ${
+                          aria-label={`${item.session.courseName}, ${hhmm(item.startMin)}–${hhmm(item.endMin)}, ${item.session.roomName}, ${item.session.teacherName}`}
+                          className={`absolute overflow-hidden rounded-sm border py-0.5 pl-2 pr-1 text-left text-[11px] text-ink shadow-sm transition-shadow hover:shadow-card ${
                             cancelled ? 'border-dashed' : ''
-                          } ${active ? 'ring-2 ring-slate-400' : ''}`}
+                          } ${active ? 'ring-2 ring-brand' : ''}`}
                           style={{
                             top,
                             height,
                             left: `${item.lane * width}%`,
                             width: `calc(${width}% - 2px)`,
-                            backgroundColor: `${color}24`,
-                            borderColor: color
+                            backgroundColor: `${color}1F`,
+                            borderColor: darkenForBorder(color)
                           }}
                         >
-                          <span className="block font-mono text-[10px] text-slate-500">
+                          <span
+                            aria-hidden="true"
+                            className="absolute inset-y-0 left-0 w-[3px]"
+                            style={{ backgroundColor: color }}
+                          />
+                          <span className="block font-mono text-[10px] tabular-nums text-muted">
                             {hhmm(item.startMin)}–{hhmm(item.endMin)}
                           </span>
-                          <span className="block truncate font-medium">
+                          <span className="block truncate text-xs font-semibold">
                             {item.session.courseName}
                           </span>
-                          {height > 42 && (
-                            <span className="block truncate text-[10px] text-slate-500">
+                          {height > 48 && (
+                            <span className="block truncate text-[10px] text-muted">
                               {item.session.roomName} · {item.session.teacherName}
                             </span>
                           )}
                           {cancelled && (
-                            <span className="block text-[9px] font-semibold uppercase">отменён</span>
+                            <span className="block text-[10px] font-semibold uppercase text-danger">
+                              отменён
+                            </span>
                           )}
                         </button>
                       );
@@ -807,33 +1065,42 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
 
                     {selected &&
                       byDay.get(day)?.some((item) => item.session.sessionId === selected.sessionId) && (
+                        <>
+                        {isMobileSheet && (
+                          <div
+                            className="fixed inset-0 z-40 bg-black/40"
+                            aria-hidden="true"
+                            onClick={() => setSelectedId(null)}
+                          />
+                        )}
                         <div
-                          className="absolute z-30 w-60 rounded-lg border border-slate-200 bg-white p-2 text-[11px] shadow-xl"
-                          style={{
-                            top: Math.max(
-                              (zonedMinutes(selected.startsAt, timeZone).minutes -
-                                range.startHour * 60) *
-                                pxPerMin -
-                                8,
-                              0
-                            ),
-                            left: '25%'
-                          }}
+                          ref={popoverRef}
+                          role="dialog"
+                          aria-label={`Занятие: ${selected.courseName}`}
+                          tabIndex={-1}
+                          className={`fixed z-50 w-[280px] rounded-md border border-line bg-surface p-2.5 text-xs shadow-pop outline-none ${
+                            isMobileSheet ? 'max-h-[70vh] overflow-y-auto' : ''
+                          }`}
+                          style={
+                            isMobileSheet
+                              ? { left: 8, right: 8, bottom: 8, width: 'auto' }
+                              : popoverPosition()
+                          }
                           onClick={(event) => event.stopPropagation()}
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <span className="font-semibold text-slate-800">
+                            <span className="font-semibold text-ink">
                               {selected.courseName}
                             </span>
                             <button
                               type="button"
                               onClick={() => setSelectedId(null)}
-                              className="rounded px-1 text-slate-400 hover:bg-slate-100"
+                              className="rounded px-1 text-faint hover:bg-subtle"
                             >
                               ×
                             </button>
                           </div>
-                          <p className="mt-0.5 text-slate-600">
+                          <p className="mt-0.5 text-muted">
                             {hhmm(zonedMinutes(selected.startsAt, timeZone).minutes)}–
                             {hhmm(
                               zonedMinutes(selected.startsAt, timeZone).minutes +
@@ -844,9 +1111,97 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                             )}{' '}
                             · {selected.roomName}
                           </p>
-                          <p className="text-slate-600">{selected.teacherName}</p>
+                          <p className="text-muted">{selected.teacherName}</p>
                           {selected.status === 'cancelled' && (
-                            <p className="mt-1 font-semibold uppercase text-rose-600">отменён</p>
+                            <p className="mt-1 font-semibold uppercase text-danger">отменён</p>
+                          )}
+                          {studentMode && selected.status === 'scheduled' && (
+                            <div className="mt-2 space-y-1.5 border-t border-line pt-2">
+                              {myStatus ? (
+                                <p className="font-semibold text-ink">
+                                  {myStatus === 'attended'
+                                    ? 'Вы отмечены: пришёл'
+                                    : myStatus === 'cancelled'
+                                      ? 'Вы отменили участие'
+                                      : 'Отметка: не пришёл'}
+                                </p>
+                              ) : (
+                                <>
+                                  {checkInOpen ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => void markSelf('attended')}
+                                      disabled={attendanceBusy}
+                                      className="rounded bg-brand px-2 py-1 font-semibold text-white hover:bg-brand-hover disabled:opacity-50"
+                                    >
+                                      Я пришёл
+                                    </button>
+                                  ) : canCancelSelf ? (
+                                    <p className="text-muted">Отметиться можно с началом занятия</p>
+                                  ) : (
+                                    <p className="text-muted">Окно отметки закрыто</p>
+                                  )}
+                                  {canCancelSelf && (
+                                    <button
+                                      type="button"
+                                      onClick={() => void markSelf('cancelled')}
+                                      disabled={attendanceBusy}
+                                      className="rounded border border-line-strong px-2 py-1 text-ink hover:bg-subtle disabled:opacity-50"
+                                    >
+                                      Не смогу прийти
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                              {attendanceNotice && <p className="text-success">{attendanceNotice}</p>}
+                              {attendanceError && <p className="text-danger">{attendanceError}</p>}
+                            </div>
+                          )}
+                          {canManageAttendance && (
+                            <div className="mt-2 border-t border-line pt-2">
+                              <p className="font-semibold text-ink">Ростер сеанса</p>
+                              {rosterError && <p className="text-danger">{rosterError}</p>}
+                              {roster.length === 0 ? (
+                                <p className="text-muted">В группах курса пока нет учеников</p>
+                              ) : (
+                                <ul className="mt-1 max-h-44 space-y-1 overflow-y-auto pr-1">
+                                  {roster.map((item) => (
+                                    <li
+                                      key={item.membershipId}
+                                      className="flex items-center justify-between gap-1"
+                                    >
+                                      <span className="truncate text-ink">{item.studentName}</span>
+                                      <span className="flex shrink-0 gap-0.5">
+                                        {(
+                                          [
+                                            ['attended', 'пришёл'],
+                                            ['no_show', 'не пришёл'],
+                                            ['cancelled', 'отменил']
+                                          ] as const
+                                        ).map(([status, label]) => (
+                                          <button
+                                            key={status}
+                                            type="button"
+                                            disabled={
+                                              rosterBusy || selected.status === 'cancelled'
+                                            }
+                                            onClick={() => void markStudent(item, status)}
+                                            aria-pressed={item.status === status}
+                                            className={
+                                              item.status === status
+                                                ? 'rounded bg-brand px-1 py-0.5 text-[10px] font-semibold text-white'
+                                                : 'rounded border border-line-strong px-1 py-0.5 text-[10px] text-muted hover:bg-subtle disabled:opacity-50'
+                                            }
+                                          >
+                                            {label}
+                                          </button>
+                                        ))}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
                           )}
                           {canManage && (
                             <div className="mt-1.5 space-y-1.5">
@@ -854,13 +1209,13 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                                 type="datetime-local"
                                 value={moveValue}
                                 onChange={(event) => setMoveValue(event.target.value)}
-                                className="w-full rounded border border-slate-300 px-1.5 py-1"
+                                className="w-full rounded border border-line-strong px-1.5 py-1"
                               />
                               <div className="flex flex-wrap gap-1">
                                 <button
                                   type="button"
                                   onClick={() => void moveSession(selected)}
-                                  className="rounded border border-slate-300 px-1.5 py-0.5 text-slate-700 hover:bg-slate-50"
+                                  className="rounded border border-line-strong px-1.5 py-0.5 text-ink hover:bg-subtle"
                                 >
                                   Перенести
                                 </button>
@@ -868,7 +1223,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                                   <button
                                     type="button"
                                     onClick={() => void cancelSession(selected)}
-                                    className="rounded border border-amber-300 px-1.5 py-0.5 text-amber-700 hover:bg-amber-50"
+                                    className="rounded border border-warning-border px-1.5 py-0.5 text-warning hover:bg-warning-soft"
                                   >
                                     Отменить
                                   </button>
@@ -876,7 +1231,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                                 <button
                                   type="button"
                                   onClick={() => void removeSession(selected)}
-                                  className="rounded border border-rose-300 px-1.5 py-0.5 text-rose-600 hover:bg-rose-50"
+                                  className="rounded border border-danger-border px-1.5 py-0.5 text-danger hover:bg-danger-soft"
                                 >
                                   Удалить
                                 </button>
@@ -884,6 +1239,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                             </div>
                           )}
                         </div>
+                        </>
                       )}
                   </div>
                 );
@@ -893,7 +1249,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
         </div>
 
         {sessions.length === 0 && (
-          <p className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">
+          <p className="rounded-xl border border-dashed border-line-strong p-4 text-center text-sm text-faint">
             На этой неделе сеансов нет
           </p>
         )}

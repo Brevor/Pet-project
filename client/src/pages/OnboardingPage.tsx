@@ -44,33 +44,33 @@ export function OnboardingPage({ onChanged }: { onChanged: () => void }) {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
+      <section className="card p-6">
         <h2 className="text-base font-semibold">С чего начнём?</h2>
         <p className="mt-1 text-sm text-slate-500">
           Вы ещё не в студии. Создайте свою — или присоединитесь к существующей по ссылке.
         </p>
       </section>
 
-      {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      {error && <p className="rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
       <div className="grid gap-4 md:grid-cols-2">
-        <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <section className="card p-5">
           <h3 className="text-sm font-semibold">Создать студию</h3>
           <p className="mt-1 text-xs text-slate-500">Вы станете владельцем и получите ссылку для учеников.</p>
           <form onSubmit={createStudio} className="mt-3 space-y-3">
-            <label className="block text-sm">
-              <span className="text-slate-600">Название</span>
+            <label className="block">
+              <span className="label">Название</span>
               <input
                 required
                 minLength={2}
                 maxLength={60}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-violet-500"
+                className="input"
               />
             </label>
-            <label className="block text-sm">
-              <span className="text-slate-600">Часовой пояс</span>
+            <label className="block">
+              <span className="label">Часовой пояс</span>
               <select
                 value={timezone}
                 onChange={(event) => setTimezone(event.target.value)}
@@ -92,20 +92,20 @@ export function OnboardingPage({ onChanged }: { onChanged: () => void }) {
           </form>
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <section className="card p-5">
           <h3 className="text-sm font-semibold">Присоединиться по ссылке</h3>
           <p className="mt-1 text-xs text-slate-500">
             Вставьте ссылку студии или её код — например, <code>dance-lab</code>.
           </p>
           <form onSubmit={joinByCode} className="mt-3 space-y-3">
-            <label className="block text-sm">
-              <span className="text-slate-600">Ссылка или код</span>
+            <label className="block">
+              <span className="label">Ссылка или код</span>
               <input
                 required
                 value={code}
                 onChange={(event) => setCode(event.target.value)}
                 placeholder="https://…/join/dance-lab"
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-violet-500"
+                className="input"
               />
             </label>
             <button

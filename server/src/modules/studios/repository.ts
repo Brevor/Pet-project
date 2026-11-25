@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../../errors';
+import { insertPresetAchievements } from '../achievements/repository';
 import { generateReferralCode } from './referral';
 
 function isReferralCodeCollision(error: unknown): boolean {
@@ -99,6 +100,8 @@ async function createStudioTx(
       `INSERT INTO membership_roles (membership_id, studio_id, role) VALUES ($1, $2, 'owner')`,
       [membership.rows[0]!.id, studio.id]
     );
+
+    await insertPresetAchievements(client, studio.id, userId);
 
     await client.query('COMMIT');
     return { studio, workingHours: hours };

@@ -11,7 +11,11 @@ export type Action =
   | 'rooms.write'
   | 'courses.write'
   | 'schedule.read'
-  | 'schedule.write';
+  | 'schedule.write'
+  | 'attendance.manage'
+  | 'balance.read'
+  | 'balance.write'
+  | 'achievements.write';
 
 const PERMISSIONS: Record<Action, Role[]> = {
   'studio.read': ['owner', 'admin', 'curator', 'teacher', 'assistant', 'student'],
@@ -23,7 +27,11 @@ const PERMISSIONS: Record<Action, Role[]> = {
   'rooms.write': ['owner', 'admin', 'curator'],
   'courses.write': ['owner', 'admin', 'curator'],
   'schedule.read': ['owner', 'admin', 'curator', 'teacher', 'assistant', 'student'],
-  'schedule.write': ['owner', 'admin', 'curator']
+  'schedule.write': ['owner', 'admin', 'curator'],
+  'attendance.manage': ['owner', 'admin'],
+  'balance.read': ['owner', 'admin', 'curator', 'student'],
+  'balance.write': ['owner', 'admin'],
+  'achievements.write': ['owner', 'admin', 'curator']
 };
 
 export function isRole(value: string): value is Role {

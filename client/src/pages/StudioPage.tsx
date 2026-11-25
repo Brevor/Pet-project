@@ -1,12 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
+import { isFresh } from '../format';
 import {
   DAY_LABELS,
   ROLE_LABELS,
   type Membership,
+  type StudentAchievement,
   type StudioView,
   type WorkingHour
 } from '../types';
+import { Badge } from '../ui/Card';
+import { Button } from '../ui/Button';
+import { InlineAlert } from '../ui/InlineAlert';
+import { Skeleton } from '../ui/States';
+import { Tabs } from '../ui/Tabs';
+import { AchievementsCatalogTab } from './AchievementsCatalogTab';
+import { AchievementsTab } from './AchievementsTab';
+import { AttendanceTab } from './AttendanceTab';
+import { BalancesTab } from './BalancesTab';
+import { BalanceTab } from './BalanceTab';
 import { CoursesTab } from './CoursesTab';
 import { OnboardingPage } from './OnboardingPage';
 import { RoomsTab } from './RoomsTab';
@@ -14,10 +26,23 @@ import { ScheduleTab } from './ScheduleTab';
 import { StaffTab } from './StaffTab';
 import { StudentsTab } from './StudentsTab';
 
-type Tab = 'schedule' | 'courses' | 'rooms' | 'staff' | 'students';
+type Tab =
+  | 'schedule'
+  | 'attendance'
+  | 'balance'
+  | 'achievements'
+  | 'balances'
+  | 'courses'
+  | 'rooms'
+  | 'staff'
+  | 'students';
 
 const ALL_TABS: Array<{ id: Tab; label: string }> = [
   { id: 'schedule', label: 'Расписание' },
+  { id: 'attendance', label: 'Посещения' },
+  { id: 'balance', label: 'Баланс' },
+  { id: 'achievements', label: 'Достижения' },
+  { id: 'balances', label: 'Балансы' },
   { id: 'courses', label: 'Курсы' },
   { id: 'rooms', label: 'Залы' },
   { id: 'staff', label: 'Команда' },
@@ -33,7 +58,7 @@ function describeHours(hours: WorkingHour[]): string {
   return closed.length > 0 ? `${base}, выходной: ${closed.join(', ')}` : base;
 }
 
-export function StudioPage({ onLogout }: { onLogout: () => void }) {
+export function StudioPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [studio, setStudio] = useState<StudioView | null>(null);
@@ -41,6 +66,8 @@ export function StudioPage({ onLogout }: { onLogout: () => void }) {
   const [linkInput, setLinkInput] = useState('');
   const [savingLink, setSavingLink] = useState(false);
   const [linkNotice, setLinkNotice] = useState('');
+  const [membershipId, setMembershipId] = useState<string | null>(null);
+  const [newAchievements, setNewAchievements] = useState<StudentAchievement[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -50,11 +77,26 @@ export function StudioPage({ onLogout }: { onLogout: () => void }) {
       const first = list.items[0];
       if (!first) {
         setStudio(null);
+        setMembershipId(null);
+        setNewAchievements([]);
         return;
       }
+      setMembershipId(first.membershipId);
       const view = await api<StudioView>(`/studios/${first.studioId}`);
       setStudio(view);
       setLinkInput(view.referralCode);
+      if (first.roles.includes('student')) {
+        try {
+          const achievements = await api<{ items: StudentAchievement[] }>(
+            `/studios/${first.studioId}/students/${first.membershipId}/achievements`
+          );
+          setNewAchievements(achievements.items.filter((item) => isFresh(item.awardedAt)));
+        } catch {
+          setNewAchievements([]);
+        }
+      } else {
+        setNewAchievements([]);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Не удалось загрузить студию');
     } finally {
@@ -97,11 +139,21 @@ export function StudioPage({ onLogout }: { onLogout: () => void }) {
   }
 
   if (loading) {
-    return <p className="text-sm text-slate-500">Загрузка…</p>;
+    return (
+      <div className="space-y-4" aria-busy="true">
+        <div className="card space-y-3 p-4 md:p-5">
+          <Skeleton className="h-6 w-48" />
+          <Skeleton className="h-4 w-72" />
+          <Skeleton className="h-16 w-full" />
+        </div>
+        <Skeleton className="h-10 w-80" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
   }
 
   if (error) {
-    return <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>;
+    return <InlineAlert variant="error">{error}</InlineAlert>;
   }
 
   if (!studio) {
@@ -120,8 +172,12 @@ export function StudioPage({ onLogout }: { onLogout: () => void }) {
   const canManageCourses = canManageStudents;
   const canManageRooms = canManageStudents;
   const canEditLink = canManageStaff;
+  const isStudent = roles.includes('student');
   const isStudentOnly = roles.every((role) => role === 'student');
   const visibleTabs = ALL_TABS.filter((item) => {
+    if (item.id === 'attendance' || item.id === 'balance') return isStudent;
+    if (item.id === 'achievements') return isStudent || canManageStudents;
+    if (item.id === 'balances') return canManageStudents;
     if (item.id === 'courses') return true;
     if (item.id === 'staff') return !isStudentOnly;
     if (item.id === 'students') return canManageStudents;
@@ -131,95 +187,113 @@ export function StudioPage({ onLogout }: { onLogout: () => void }) {
   const referralUrl = `${window.location.origin}${studio.referralUrl}`;
 
   return (
-    <div className="space-y-5">
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
+    <div className="space-y-4">
+      <section className="card p-4 md:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold">{studio.studio.name}</h2>
-            <p className="mt-1 text-sm text-slate-500">
+            <h2 className="text-xl font-semibold">{studio.studio.name}</h2>
+            <p className="mt-1 text-sm text-muted">
               {studio.studio.timezone} · {describeHours(studio.workingHours)}
             </p>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-2 flex flex-wrap gap-1.5">
               {studio.myRoles.map((role) => (
-                <span
-                  key={role}
-                  className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-medium text-violet-700"
-                >
+                <Badge key={role} tone="brand">
                   {ROLE_LABELS[role] ?? role}
-                </span>
+                </Badge>
               ))}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onLogout}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-          >
-            Выйти
-          </button>
         </div>
 
-        <div className="mt-4 rounded-lg bg-slate-50 p-4">
+        <div className="mt-4 rounded-md bg-subtle p-4">
           <h3 className="text-sm font-semibold">Ссылка для учеников</h3>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <code className="flex-1 overflow-x-auto rounded bg-white px-3 py-2 text-xs text-slate-700">
+            <code className="min-w-0 flex-1 overflow-x-auto rounded bg-surface px-3 py-2 text-xs text-muted">
               {referralUrl}
             </code>
-            <button
-              type="button"
-              onClick={copyLink}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-white"
-            >
+            <Button size="sm" variant="secondary" onClick={() => void copyLink()}>
               Скопировать
-            </button>
+            </Button>
           </div>
 
           {canEditLink && (
             <form onSubmit={saveLink} className="mt-3 flex flex-wrap items-end gap-2">
-              <label className="text-xs">
-                <span className="block text-slate-500">Код ссылки</span>
+              <label htmlFor="referral-code" className="min-w-[180px]">
+                <span className="label">Код ссылки</span>
                 <input
+                  id="referral-code"
                   value={linkInput}
                   onChange={(event) => setLinkInput(event.target.value)}
-                  className="mt-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+                  className="input"
                 />
               </label>
-              <button
-                type="submit"
-                disabled={savingLink}
-                className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
-              >
+              <Button type="submit" size="sm" disabled={savingLink}>
                 {savingLink ? 'Сохраняем…' : 'Сохранить'}
-              </button>
+              </Button>
             </form>
           )}
 
-          {linkNotice && <p className="mt-2 text-xs text-slate-600">{linkNotice}</p>}
+          {linkNotice && <p className="mt-2 text-xs text-muted">{linkNotice}</p>}
         </div>
       </section>
 
-      <nav className="flex flex-wrap gap-2">
-        {visibleTabs.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setTab(item.id)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-              tab === item.id
-                ? 'bg-violet-600 text-white'
-                : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
-      </nav>
+      {newAchievements.length > 0 && (
+        <InlineAlert variant="success">
+          Новое достижение: {newAchievements.map((item) => item.name).join(', ')}
+        </InlineAlert>
+      )}
 
-      {tab === 'staff' && <StaffTab studioId={studioId} canManage={canManageStaff} />}
-      {tab === 'students' && <StudentsTab studioId={studioId} canExclude={canManageStaff} />}
-      {tab === 'rooms' && <RoomsTab studioId={studioId} />}
-      {tab === 'courses' && <CoursesTab studioId={studioId} canManage={canManageCourses} />}
-      {tab === 'schedule' && <ScheduleTab studioId={studioId} canManage={canManageSchedule} />}
+      <Tabs ariaLabel="Разделы студии" items={visibleTabs} value={tab} onChange={setTab} />
+
+      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+        {tab === 'staff' && <StaffTab studioId={studioId} canManage={canManageStaff} />}
+        {tab === 'students' && (
+          <StudentsTab
+            studioId={studioId}
+            canExclude={canManageStaff}
+            canViewAttendance={canManageStaff}
+            timeZone={studio.studio.timezone}
+          />
+        )}
+        {tab === 'rooms' && <RoomsTab studioId={studioId} />}
+        {tab === 'courses' && <CoursesTab studioId={studioId} canManage={canManageCourses} />}
+        {tab === 'schedule' && (
+          <ScheduleTab
+            studioId={studioId}
+            canManage={canManageSchedule}
+            canManageAttendance={canManageStaff}
+          />
+        )}
+        {tab === 'attendance' && membershipId && (
+          <AttendanceTab
+            studioId={studioId}
+            membershipId={membershipId}
+            timeZone={studio.studio.timezone}
+          />
+        )}
+        {tab === 'balance' && membershipId && (
+          <BalanceTab studioId={studioId} membershipId={membershipId} timeZone={studio.studio.timezone} />
+        )}
+        {tab === 'achievements' &&
+          (canManageStudents ? (
+            <AchievementsCatalogTab studioId={studioId} timeZone={studio.studio.timezone} />
+          ) : (
+            membershipId && (
+              <AchievementsTab
+                studioId={studioId}
+                membershipId={membershipId}
+                timeZone={studio.studio.timezone}
+              />
+            )
+          ))}
+        {tab === 'balances' && (
+          <BalancesTab
+            studioId={studioId}
+            canManage={canManageStaff}
+            timeZone={studio.studio.timezone}
+          />
+        )}
+      </div>
     </div>
   );
 }

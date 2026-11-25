@@ -1,11 +1,11 @@
 # План задач: модуль «ядро студии» (Фаза 1)
 
-> **Версия:** 1.7.0
-> **Дата:** 2026-11-22
+> **Версия:** 1.11.0
+> **Дата:** 2026-11-25
 > **Роль:** TechLead
-> **Входы:** `doc/requirements/studio.md` (approved, v0.9.0), `doc/requirements/profile.md` (approved, v0.4.0), `doc/architecture.md` v1.7.0, `doc/contracts.md` v1.5.0
+> **Входы:** `doc/requirements/studio.md` (approved, v0.10.0), `doc/requirements/profile.md` (approved, v0.5.0), `doc/architecture.md` v1.7.1, `doc/contracts.md` v1.5.1, `doc/design-guide.md` v0.1.0
 > **Ветка:** `feature/studio-phase-2` (PR #8)
-> **Статус:** M0–M13 выполнены; **M14 (профиль, аватары, просмотр разделов)** — T-74…T-78 в работе по плану §4.13.
+> **Статус:** M0–M16 выполнены; **M16 (Фаза 2: посещаемость, баланс, группы, достижения)** закрыт 2026-11-25.
 
 ## 1. Текущее состояние
 
@@ -17,8 +17,10 @@
 - **База проверок 2026-11-22, 22:1x** (ветка `feature/studio-phase-2`, после M9): `tsc` server — 0,
   `tsc` client — 0, eslint — 0; прогнаны **все** наборы: app 5/5, db 7/7, auth 8/8, studios 15/15,
   m4 5/5, m5 10/10, isolation 5/5, join 7/7, e2e 1/1 — **65/65**.
-  `node --test` в песочнице не запускается (spawn EPERM) — наборы запускаются пофайлово:
-  `node server/dist/test/<suite>.test.js`.
+  
+ode --test` в песочнице не запускается (spawn EPERM) — наборы запускаются пофайлово:
+  
+ode server/dist/test/<suite>.test.js`.
 - Открыты только Q3 (несколько студий) и Q8 (роль «родитель») — вне M8.
 - Решение **D7** (трактовка матрицы 4.1 для куратора) — на подтверждение при приёмке UI,
   API-задачи не блокирует (§2).
@@ -72,7 +74,8 @@
 | `@types/node`, `@types/pg`, `@types/react`, `@types/react-dom` | всё | типы |
 
 **Новые зависимости в M8 не добавляются** — в том числе для UI-тестов: DOM-проверки ROL-11/12
-выполняются вручную в браузере, автоматизируются только API-сценарии (`node:test`).
+выполняются вручную в браузере, автоматизируются только API-сценарии (
+ode:test`).
 
 **Сознательно не берём:** ORM, `luxon`/`date-fns`, `tsx`, любой UI-кит кроме Tailwind,
 `jsdom`/`testing-library` (новая зависимость + отдельный раннер).
@@ -109,7 +112,8 @@ node server/dist/test/<suite>.test.js      # DATABASE_URL обязателен, 
 
 Файлы: `prototype/index.html`, `prototype/app.js`, `prototype/logic.test.mjs`.
 Ограничения: без сервера, без БД, без внешних зависимостей; данные в `localStorage`;
-проверка — `node prototype/logic.test.mjs`.
+проверка — 
+ode prototype/logic.test.mjs`.
 
 | ID | Задача | Файлы | Готово, когда | Требования |
 |---|---|---|---|---|
@@ -131,7 +135,8 @@ M1+ не начинать до их закрытия. *(Исторический
 
 | ID | Задача | Файлы | Готово, когда | Статус |
 |---|---|---|---|---|
-| T-01 | Монорепо и инструменты: workspace, tsconfig strict, eslint, prettier, `.gitignore`, `.env.example` | `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `eslint.config.js`, `.prettierrc`, `.gitignore` | install + typecheck + lint | ✅ выполнено (vitest → `node:test`, §4.2) |
+| T-01 | Монорепо и инструменты: workspace, tsconfig strict, eslint, prettier, `.gitignore`, `.env.example` | `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `eslint.config.js`, `.prettierrc`, `.gitignore` | install + typecheck + lint | ✅ выполнено (vitest → 
+ode:test`, §4.2) |
 | T-02 | Каркас сервера: Fastify, конфиг из env, конверт ошибок, `GET /health` | `server/**` | `/health` → 200; ошибка → конверт | ✅ выполнено, 3 теста |
 | T-03 | Каркас клиента: Vite + React + TS + Tailwind, маршрутизация | `client/**` | сборка клиента проходит | ⚠️ код и typecheck готовы, `vite build` не проверен (§4.2) |
 | T-04 | Окружение БД: PostgreSQL, `btree_gist`, миграции, пул | `server/src/db/**`, `migrations/**` | миграция на чистой БД | ✅ выполнено |
@@ -143,9 +148,15 @@ M1+ не начинать до их закрытия. *(Исторический
 
 | Что | Штатно | В песочнице |
 |---|---|---|
-| Тесты сервера | `vitest run` | `node:test` + `node server/dist/test/<suite>.test.js` пофайлово |
-| Проверки | `pnpm typecheck/lint/test` | `node node_modules/typescript/lib/tsc.js`, `node node_modules/eslint/bin/eslint.js .` |
-| `node_modules` | изолированный линкер pnpm | `nodeLinker: hoisted` — junction-ссылки в песочнице ломаются |
+| Тесты сервера | `vitest run` | 
+ode:test` + 
+ode server/dist/test/<suite>.test.js` пофайлово |
+| Проверки | `pnpm typecheck/lint/test` | 
+ode node_modules/typescript/lib/tsc.js`, 
+ode node_modules/eslint/bin/eslint.js .` |
+| 
+ode_modules` | изолированный линкер pnpm | 
+odeLinker: hoisted` — junction-ссылки в песочнице ломаются |
 | Сборка клиента | `vite build` | недоступна: esbuild не может запустить сервис |
 
 На обычной машине достаточно `pnpm install && pnpm typecheck && pnpm lint && pnpm test`.
@@ -238,7 +249,8 @@ D1 подтверждён пользователем, D6 закрыт: PostgreSQ
 | ID | Задача | Файлы | Готово, когда | Требования |
 |---|---|---|---|---|
 | **T-37** | Миграция 006: `courses.teacher_membership_id` + составной FK `(studio_id, teacher_membership_id) → memberships (studio_id, id)` `ON DELETE SET NULL (teacher_membership_id)` | `migrations/006_course_teacher.sql`, `server/test/db.test.ts` | миграция применилась, повторный запуск — «нечего применять»; удаление членства обнуляет ссылку в курсе; вставка преподавателя чужой студии → SQLSTATE `23503`; тесты db зелёные | CLS-7 |
-| **T-38** | Курсы: `teacherMembershipId` в создании/правке, `teacherMembershipId` + `teacherName` в ответах, `PATCH` с `null` снимает преподавателя | `server/src/modules/courses/repository.ts`, `server/src/modules/courses/routes.ts`, `server/test/m4.test.ts` | создание с преподавателем возвращает `teacherName`; `PATCH null` обнуляет (не COALESCE); чужое/неактивное членство или без роли `teacher` → `422 NOT_A_TEACHER`; тесты m4 зелёные | CLS-7, CLS-8 |
+| **T-38** | Курсы: `teacherMembershipId` в создании/правке, `teacherMembershipId` + `teacherName` в ответах, `PATCH` с 
+ull` снимает преподавателя | `server/src/modules/courses/repository.ts`, `server/src/modules/courses/routes.ts`, `server/test/m4.test.ts` | создание с преподавателем возвращает `teacherName`; `PATCH null` обнуляет (не COALESCE); чужое/неактивное членство или без роли `teacher` → `422 NOT_A_TEACHER`; тесты m4 зелёные | CLS-7, CLS-8 |
 | **T-39** | Права: `members.read` только owner/admin; `GET /members?role=student` по `students.write`; новый `GET /studios/:id/teachers` (`membershipId`, `displayName`) по `schedule.read` | `server/src/modules/access/rbac.ts`, `server/src/modules/members/repository.ts`, `server/src/modules/members/routes.ts`, `server/test/isolation.test.ts`, `server/test/studios.test.ts` | куратор: `/members` → 403, `/members?role=student` → 200; ученик и преподаватель: `/teachers` → 200, `/members` → 403; преподаватель без роли `teacher` в `/teachers` не попадает; тесты зелёные | ROL-7, ROL-12, SCH-1 |
 | **T-40** | `PATCH /members`: свои роли менять нельзя; владельца выдаёт/снимает только owner; второй owner не доходит до БД | `server/src/modules/members/routes.ts`, `server/src/modules/members/repository.ts`, `server/test/studios.test.ts` | self-PATCH → 403; админ на владельце или с `owner` в наборе → 403; снятие `owner` с последнего → 409 `LAST_OWNER`; нет 500 по `23505`; тесты зелёные | ROL-6, STF-11, ACC-9, STF-5 |
 | **T-41** | Сеансы: убрать `durationMin` из `POST /sessions` (разовый и серия); длительность из курса; `teacherMembershipId` необязателен | `server/src/modules/schedule/routes.ts`, `server/src/modules/schedule/repository.ts`, `server/test/m5.test.ts` | `durationMin`/`series.durationMin` → 422 `VALIDATION` с `details.fields`; длительность = `courses.default_duration_min`; преподаватель из курса, явный главнее; нет нигде → 422; `class_series.duration_min` — снимок; тесты m5 зелёные | SCH-1, SCH-2, CLS-7, CLS-8 |
@@ -405,7 +417,8 @@ PATCH /members; для владельца и собственных ролей �
 | **T-75** | Аватары: `POST /me/avatar` (multipart, jpeg/png/webp ≤ 2 МБ), `DELETE /me/avatar`, публичный `GET /avatars/{key}`; файлы на томе `uploads/avatars`, в `users.avatar_key` ключ | `server/src/modules/auth/routes.ts`, `server/src/modules/auth/avatar.ts` (новый), `server/src/app.ts`, `server/test/auth.test.ts` | png 300 КБ → 200 и `avatarUrl`; pdf/5 МБ → 422 `details.fields.avatar`; `DELETE` → 204 и `avatarUrl: null`; неизвестный key → 404; файл лежит в томе | PRF-11, Q18 |
 | **T-76** | Право `members.list` (все, кроме `student`) для `GET /members`; в ответах `avatarUrl`, `about`, `email` только при `members.write`; то же в `GET /teachers` | `server/src/modules/access/rbac.ts`, `server/src/modules/members/*`, `server/test/studios.test.ts`, `server/test/isolation.test.ts` | teacher видит список сотрудников без email; student → 403; owner видит email; аватары в ответах | ROL-13, ROL-14, PRF-13 |
 | **T-77** | UI «Профиль»: вкладка для всех; поля и аватар (превью, загрузка, удаление), «о себе», членства и роли read-only, смена пароля, выход | `client/src/pages/ProfilePage.tsx` (новый), `client/src/App.tsx`, `client/src/types.ts`, `client/src/api.ts` | профиль доступен любой роли и аккаунту без студии; обязательные имя/фамилия дают 422 при пустых; аватар загружается и виден после перезагрузки | PRF-1…PRF-13 |
-| **T-79** | Аватары в списках: компонент `Avatar` (img или заглушка с инициалами) в строках «Команды» и «Учеников» | `client/src/components/Avatar.tsx` (новый), `client/src/pages/StaffTab.tsx`, `StudentsTab.tsx`, `client/src/types.ts` | у участника с аватаром в списке видно изображение; без аватара — инициалы; `Member` содержит `avatarUrl`/`about` | PRF-13, Q17 |`n| **T-78** | Видимость разделов: «Курсы» на просмотр всем (без кнопок), «Команда» на просмотр curator/teacher/assistant (без управления), ученик без «Команды»/«Учеников»; аватары в списках | `client/src/pages/StudioPage.tsx`, `CoursesTab.tsx`, `StaffTab.tsx`, `StudentsTab.tsx` | owner/admin — полный набор; curator/teacher/assistant видят «Курсы» и «Команду» без управления; student видит только «Расписание», «Курсы», «Профиль» | ROL-12…ROL-15 |
+| **T-79** | Аватары в списках: компонент `Avatar` (img или заглушка с инициалами) в строках «Команды» и «Учеников» | `client/src/components/Avatar.tsx` (новый), `client/src/pages/StaffTab.tsx`, `StudentsTab.tsx`, `client/src/types.ts` | у участника с аватаром в списке видно изображение; без аватара — инициалы; `Member` содержит `avatarUrl`/`about` | PRF-13, Q17 |
+| **T-78** | Видимость разделов: «Курсы» на просмотр всем (без кнопок), «Команда» на просмотр curator/teacher/assistant (без управления), ученик без «Команды»/«Учеников»; аватары в списках | `client/src/pages/StudioPage.tsx`, `CoursesTab.tsx`, `StaffTab.tsx`, `StudentsTab.tsx` | owner/admin — полный набор; curator/teacher/assistant видят «Курсы» и «Команду» без управления; student видит только «Расписание», «Курсы», «Профиль» | ROL-12…ROL-15 |
 
 **Порядок:** T-74 → T-76; T-75 после T-74 (общий `/me`); T-77 после T-74/T-75 (нужны API);
 T-78 после T-76 (права) — можно параллельно с T-77.
@@ -413,6 +426,38 @@ T-78 после T-76 (права) — можно параллельно с T-77.
 
 **Статус M14 от 2026-11-22:** T-74…T-78 закрыты. API: `GET/PATCH /me`, `POST /me/password`, `POST/DELETE /me/avatar`, публичный `GET /avatars/{key}` (файлы в `uploads/avatars`), право `members.list`, `avatarUrl`/`about` в списках, email только при `members.write`. Клиент: вкладка «Профиль» (поля, аватар, пароль, членства, выход), «Курсы» на просмотр всем, «Команда» на просмотр без управления, ученик без «Команды»/«Учеников». Миграция 009 применена на локальной и контейнерной БД. Наборы 70/70, `tsc` 0/0, eslint 0. **T-79:** аватары в списках «Команда»/«Ученики» — выполнено (`client/src/components/Avatar.tsx`, заглушка с инициалами при отсутствии файла).
 
+### 4.14. M15. Дизайн-система и визуальная доработка фронтенда — выполнено 2026-11-25
+
+Основание: `doc/design-guide.md` v0.1.0 (draft), аудит `client/src` 2026-11-25, рекомендации
+`ui-ux-pro-max` (Calendar & Scheduling App), требования v0.10.0 / profile v0.5.0.
+Новых миграций и изменений API нет — только клиент и токены.
+
+| ID | Задача | Файлы | Готово, когда | Дизайн-правила |
+|---|---|---|---|---|
+| **T-80** | Токены и примитивы: CSS-переменные (цвет, радиус, тень, фокус), `tailwind.config.js` (theme.extend), компоненты `Button`, `IconButton`, `Field`, `Card`, `Badge`, `Tabs`, `InlineAlert`; замена дублирующихся классов в шапке, вкладках студии и формах входа | `client/src/index.css`, `tailwind.config.js`, `client/src/ui/*` (новые), `App.tsx`, `StudioPage.tsx`, `AuthPage.tsx` | нет повторяющихся наборов классов для кнопок/полей; `focus-visible` из токена; вкладки с `role="tablist"`/`aria-selected`; визуально без регрессий | DG-1, DG-3, DG-6, DG-22 |
+| **T-81** | Календарь: метрики сетки (час 48–56px, шаг 15 мин), блок занятия (min-h 24px, заливка 12%, полоса 3px, `tabular-nums`, скрытие третьей строки), sticky-шапка, чип времени 10px | `client/src/pages/ScheduleTab.tsx`, `client/src/types.ts` (палитра при необходимости) | блоки читаемы на 1280/1024/768/375px; текст не обрезается без альтернативы; контраст текста на цветах курсов ≥ 4.5:1 | DG-12, DG-13, DG-14, DG-21 |
+| **T-82** | Поповер сеанса: ширина 280px, clamp в вьюпорт, открытие влево у края, `role="dialog"`, Esc/клик вне, возврат фокуса, bottom-sheet на ≤767px | `client/src/pages/ScheduleTab.tsx`, `client/src/ui/Dialog.tsx` (новый) | поповер не выходит за вьюпорт у правых колонок; клавиатурный обход и возврат фокуса; на мобильном — sheet с затемнением | DG-18, DG-21, DG-23 |
+| **T-83** | Формы: ошибки по полям из `details.fields`, `aria-describedby`, подсказки формата, счётчики длины, успех через `InlineAlert role="status"`, ограничение аватара на клиенте (2 МБ, типы), `autoComplete` в auth | `client/src/ui/Field.tsx` (T-80), `ProfilePage.tsx`, `AuthPage.tsx`, `CoursesTab.tsx`, `StaffTab.tsx` | серверный 422 раскладывается по полям; ошибка связана с полем; успех озвучивается; аватар проверяется до отправки | DG-20, DG-21 |
+| **T-84** | Таблицы и списки: `scope="col"` + `caption`, строки с аватаром и бейджами ролей, действия 32px/иконки с `aria-label`, `EmptyState`, скелетоны загрузки | `client/src/ui/Table.tsx` (новый), `StaffTab.tsx`, `StudentsTab.tsx`, `CoursesTab.tsx`, `RoomsTab.tsx` | таблицы доступны скринридеру; таргеты ≥ 24px; пустые и загрузочные состояния вместо абзацев | DG-21, DG-22, DG-25, DG-26 |
+| **T-85** | Каркас и адаптив: ширина расписания до 1440px, шапка с пользователем/аватаром/выходом, мобильная навигация вкладок без горизонтального скролла страницы, единые отступы контейнера | `App.tsx`, `StudioPage.tsx`, `ScheduleTab.tsx` | на 375px нет горизонтального скролла; шапка показывает пользователя и выход; календарь использует доступную ширину | DG-24 |
+| **T-86** | A11y-проход: `focus-visible` на всех интерактивных элементах, `aria-live` для уведомлений, проверка контраста (включая 12 цветов курсов), `prefers-reduced-motion`, клавиатурная навигация календаря | `client/src/**`, `doc/design-guide.md` (уточнения при необходимости) | чек-лист §11 design-guide выполнен; ручной обход клавиатурой и скринридером (NVDA) без ловушек; контраст проверен | DG-21, DG-22, DG-23 |
+| **T-87** | Финиш M15: bottom-sheet поповера ≤767px, `caption`/`scope` у курсов, токены в Join/Onboarding, замер контраста 12 цветов и затемнение границы, стрелки в календаре, возврат фокуса и закрытие поповера при скролле, сброс `authed` по 401 | `ScheduleTab.tsx`, `CoursesTab.tsx`, `JoinPage.tsx`, `OnboardingPage.tsx`, `App.tsx`, `ui/Tabs.tsx` | 12 цветов ≥ 3:1 по границе и ≥ 4.5:1 по тексту; поповер закрывается при скролле и возвращает фокус; выход доступен в шапке всегда | DG-18, DG-21, DG-22 |
+
+**Порядок:** T-80 → T-81 → T-82; T-83 → T-84 (после T-80); T-85 после T-81; T-86 — последним, после T-82…T-85.
+**Статус M15 от 2026-11-25:** T-80…T-86 реализованы в `client/` (`tsc` 0/0, eslint 0, `vite build` ок, наборы 70/70).
+Сделано: токены (`index.css`, `tailwind.config.js`), примитивы `ui/` (`Button`, `IconButton`, `Field`,
+`Card`, `Badge`, `Tabs`, `InlineAlert`, `Table`, `EmptyState`, `Skeleton`), шапка с пользователем и
+выходом, ширина 1440px, вкладки `role="tablist"`, скелетоны и пустые состояния, таблицы со
+`scope`/`caption` (Команда, Ученики), ошибки по полям в профиле и аватаре (`details.fields`),
+календарь: блоки 24px/12%/полоса 3px/`tabular-nums`, чип времени 10px, попап с clamp в вьюпорт,
+`role="dialog"`, Esc/клик вне/возврат фокуса, кнопка «+ занятие» в шапке дня, фокус-кольца и
+`prefers-reduced-motion` в базовом слое.
+
+**T-87 (финиш M15, 2026-11-25):** закрыты остатки — bottom-sheet поповера на ≤767px (ширина экрана,
+`max-h 70vh`, затемнение 40% с закрытием по клику); таблица курсов с `caption`/`scope="col"`;
+`JoinPage`/`OnboardingPage` переведены на токены `.label`/`.input`/`.btn`; контраст 12 цветов курсов
+измерен (текст 15.28:1…16.46:1, границы после затемнения на 35% — 3.98:1…7.43:1) и граница блока
+теперь темнее заливки; стрелки `←/→/↑/↓` перемещают фокус между блоками календаря.
 ## 5. Граф зависимостей
 
 ```
@@ -452,6 +497,7 @@ M11: T-63 → T-64 → T-65, T-66
 M12: T-68 + T-69 → T-70 → T-71 → T-72
 
 M14: T-74 → T-76; T-75 после T-74; T-77 после T-74/T-75; T-78 после T-76
+M15: T-80 → T-81 → T-82; T-83 → T-84; T-85 после T-81; T-86 последним
 ```
 
 ## 6. Заблокированные задачи (не ставить в работу)
@@ -487,5 +533,32 @@ M14: T-74 → T-76; T-75 после T-74; T-77 после T-74/T-75; T-78 пос
     ✅ выполнены 2026-11-22; миграция 008 применена на локальной и контейнерной БД.
 11. M12 — компоновка расписания и виджет студии (v0.7.0): T-68…T-72. ✅ выполнены 2026-11-22;
     приёмка UI по §14.5 и шагу 16 §12 — за пользователем.
-12. M14 — профиль, аватары и просмотр разделов (studio v0.9.0, profile v0.4.0): T-74…T-78.
-    ⏳ запланировано; миграция 009 накатана на локальную БД.
+12. M14 — профиль, аватары и просмотр разделов (studio v0.9.0, profile v0.4.0): T-74…T-79.
+    ✅ выполнены 2026-11-22 (PR #9); миграция 009 на локальной и контейнерной БД.
+13. M15 — дизайн-система и визуальная доработка фронтенда: T-80…T-86.
+    ⏳ предложено 2026-11-25, ждёт подтверждения.
+
+### 4.15. M16. Фаза 2: посещаемость, баланс, группы, достижения — предложено 2026-11-25
+
+Основание: требования attendance/balance/groups/achievements v1.0.0 (groups 1.0.1), контракты §11
+(v1.6.0), architecture §15 (v1.8.0), миграция 010 применена.
+
+| ID | Задача | Файлы | Готово, когда | Требования |
+|---|---|---|---|---|
+| **T-88** | API групп: CRUD групп курса и состава, проверка «одна группа курса на ученика», ростер | `server/src/modules/groups/*`, тесты | CRUD по контракту §11.1; 409 на вторую группу курса; student в группе видит свою | GRP-1…GRP-9 |
+| **T-89** | API посещаемости: ростер, самоотметка в окне, правка админом, аудит, история | `server/src/modules/attendance/*`, тесты | окно [начало;+120] в TZ студии; 409-коды; revisions пишутся; teacher 403 | ATT-1…ATT-14 |
+| **T-90** | Баланс: операции, начисление пакета, списание/возврат в транзакции отметки, срок действия | `server/src/modules/balance/*`, тесты | списание идемпотентно; при 0 — 409 `NO_LESSONS_LEFT`; возврат при правке; история | BAL-1…BAL-9 |
+| **T-91** | API достижений: каталог, выдача/отзыв, предустановленный набор при создании студии | `server/src/modules/achievements/*`, миграция/seed | каталог CRUD; 409 `ALREADY_AWARDED`; preset при `POST /studios` | ACH-1…ACH-10 |
+| **T-92** | UI ученика: «Посещения», «Достижения», кнопка самоотметки, остаток и уведомление | `client/src/pages/Student*`, `types.ts` | ученик отмечается в окне; видит историю, достижения, баланс; ошибки по кодам | ATT-2, ATT-9, BAL-6, ACH-6/9 |
+| **T-93** | UI админа: ростер и отметки в «Расписании», «Группы» в курсе, «Балансы», каталог достижений | `ScheduleTab`, `CoursesTab`, новые вкладки | админ ставит/правит отметки; начисляет пакет; ведёт группы и достижения | ATT-6, BAL-2, GRP-1, ACH-1 |
+| **T-94** | Тесты и права: isolation для новых сущностей, teacher 403 на отметки, транзакции баланса | `server/test/*` | наборы зелёные; чужая студия — 403/404; rollback при ошибке | ROL-4, STU-4 |
+
+**Порядок:** T-88 → T-89 → T-90 (общая транзакция) → T-91; T-92/T-93 после соответствующих API; T-94 — после T-89…T-91.
+**Статус T-88:** ✅ закрыт 2026-11-25 (API + тесты, `tsc` 0, eslint 0).
+**Статус T-89:** ✅ закрыт 2026-11-25 (отметки, окно самоотметки в TZ студии, аудит правок, история; `tsc` 0, eslint 0, наборы 75/75). Списание/возврат баланса — T-90.
+**Статус T-90:** ✅ закрыт 2026-11-25 (остаток с учётом срока пакета, списание/возврат в транзакции отметки; `tsc` 0, eslint 0, наборы 78/78).
+**Статус T-91:** ✅ закрыт 2026-11-25 (каталог, preset при создании студии, выдача/отзыв; `tsc` 0, eslint 0, наборы 80/80).
+**Статус T-92:** ✅ закрыт 2026-11-25 (вкладки «Посещения», «Баланс», «Достижения», самоотметка в расписании, уведомление о новом достижении; `tsc` 0/0, eslint 0, `vite build` ок).
+**Статус T-93:** ✅ закрыт 2026-11-25 (ростер и отметки в расписании, группы курса, балансы с начислением, каталог/выдача достижений, карточка ученика; `tsc` 0/0, eslint 0, `vite build` ок, наборы 80/80).
+**Статус T-94:** ✅ закрыт 2026-11-25 (изоляция новых сущностей, права teacher/assistant/curator, откат транзакции отметки; наборы 83/83).
+**Статус:** ✅ M16 завершён: T-88…T-94 закрыты. Новой схемы нет (010 применена).
