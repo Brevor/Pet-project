@@ -65,7 +65,7 @@ export function JoinPage() {
   }
 
   return (
-    <section className="mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-6">
+    <section className="mx-auto max-w-md card p-6">
       <p className="text-xs uppercase tracking-wide text-violet-600">Приглашение в студию</p>
       <h2 className="mt-1 text-lg font-semibold">{studio?.name ?? 'Загрузка…'}</h2>
 

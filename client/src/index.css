@@ -1,3 +1,119 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-canvas: #f8fafc;
+    --bg-surface: #ffffff;
+    --bg-subtle: #f1f5f9;
+    --border: #e2e8f0;
+    --border-strong: #cbd5e1;
+    --text: #0f172a;
+    --text-muted: #475569;
+    --text-subtle: #64748b;
+    --brand: #7c3aed;
+    --brand-hover: #6d28d9;
+    --brand-soft: #ede9fe;
+    --danger: #dc2626;
+    --warning: #d97706;
+    --success: #059669;
+    --focus: #7c3aed;
+  }
+
+  body {
+    @apply bg-canvas text-ink antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-lg border border-line bg-surface;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-sm {
+    @apply h-8 px-2.5 text-xs;
+  }
+
+  .btn-md {
+    @apply h-9 px-3 text-sm;
+  }
+
+  .btn-lg {
+    @apply h-10 px-4 text-sm;
+  }
+
+  .btn-primary {
+    @apply bg-brand text-white hover:bg-brand-hover;
+  }
+
+  .btn-secondary {
+    @apply border border-line-strong bg-surface text-ink hover:bg-subtle;
+  }
+
+  .btn-ghost {
+    @apply text-muted hover:bg-subtle;
+  }
+
+  .btn-danger {
+    @apply border border-danger/40 text-danger hover:bg-danger/5;
+  }
+
+  .icon-btn {
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle;
+  }
+
+  .label {
+    @apply block text-[13px] font-medium text-muted;
+  }
+
+  .input {
+    @apply mt-1 w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-faint focus:border-brand focus:outline-none focus-visible:outline-none;
+  }
+
+  .input-error {
+    @apply border-danger focus:border-danger;
+  }
+
+  .hint {
+    @apply mt-1 block text-xs text-faint;
+  }
+
+  .field-error {
+    @apply mt-1 block text-xs text-danger;
+  }
+
+  .table-th {
+    @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-faint;
+  }
+
+  .table-td {
+    @apply px-3 py-2 text-sm text-muted;
+  }
+}

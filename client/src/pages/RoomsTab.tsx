@@ -92,7 +92,7 @@ export function RoomsTab({ studioId }: { studioId: string }) {
     <section className="space-y-4">
       <form
         onSubmit={createRoom}
-        className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4"
+        className="flex flex-wrap items-end gap-3 card p-4"
       >
         <label className="text-sm">
           <span className="block text-slate-600">Название</span>
@@ -130,11 +130,11 @@ export function RoomsTab({ studioId }: { studioId: string }) {
         </button>
       </form>
 
-      {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      {error && <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">{error}</p>}
 
       <div className="grid gap-3 sm:grid-cols-2">
         {rooms.map((room) => (
-          <article key={room.id} className="rounded-xl border border-slate-200 bg-white p-4">
+          <article key={room.id} className="card p-4">
             {editingId === room.id ? (
               <form onSubmit={(event) => saveEdit(event, room.id)} className="space-y-2">
                 <label className="block text-sm">

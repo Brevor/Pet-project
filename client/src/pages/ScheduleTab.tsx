@@ -133,6 +133,10 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [anchor, setAnchor] = useState<{ top: number; left: number; right: number; bottom: number } | null>(
+    null
+  );
+  const popoverRef = useRef<HTMLDivElement | null>(null);
   const [moveValue, setMoveValue] = useState('');
   const [narrow, setNarrow] = useState(false);
   const [mobileDay, setMobileDay] = useState(0);
@@ -240,7 +244,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
   const range = visibleRange(studio?.workingHours ?? [], sessions, timeZone);
   const totalMinutes = (range.endHour - range.startHour) * 60;
   const availableHeight = Math.max(gridHeightPx - 44, 280);
-  const pxPerMin = Math.min(2.2, Math.max(0.35, availableHeight / totalMinutes));
+  const pxPerMin = Math.min(1, Math.max(0.35, availableHeight / totalMinutes));
   const gridHeight = totalMinutes * pxPerMin;
 
   const hourMarks: number[] = [];
@@ -261,6 +265,36 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
   for (const course of courses) colorByCourse.set(course.id, courseColorHex(course.color));
 
   const selected = sessions.find((session) => session.sessionId === selectedId) ?? null;
+
+  function popoverPosition() {
+    const width = 280;
+    const margin = 8;
+    if (!anchor) return { top: 80, left: 80 };
+    let left = anchor.right + margin;
+    if (left + width > window.innerWidth - margin) left = anchor.left - width - margin;
+    left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
+    const top = Math.max(margin, Math.min(anchor.top, window.innerHeight - 320));
+    return { top, left };
+  }
+
+  useEffect(() => {
+    if (!selectedId) return;
+    popoverRef.current?.focus();
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setSelectedId(null);
+    }
+    function onPointerDown(event: PointerEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
+        setSelectedId(null);
+      }
+    }
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+    };
+  }, [selectedId]);
   const visibleDays = narrow ? [days[mobileDay] ?? days[0]!] : days;
 
   useEffect(() => {
@@ -699,10 +733,22 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                   <div
                     key={day}
                     className={`flex-1 border-l border-slate-100 px-1 py-1 text-center text-[11px] font-medium ${
-                      isToday ? 'bg-violet-100 text-violet-800' : 'text-slate-600'
+                      isToday ? 'bg-brand-soft text-ink' : 'text-muted'
                     }`}
                   >
-                    {DAY_LABELS[weekdayIndex(day)]} {shortDate(day)}
+                    <span className="block">
+                      {DAY_LABELS[weekdayIndex(day)]} {shortDate(day)}
+                    </span>
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={() => pickSlot(day, range.startHour * 60)}
+                        aria-label={`Создать занятие: ${DAY_LABELS[weekdayIndex(day)]} ${shortDate(day)}`}
+                        className="mt-0.5 text-[10px] font-medium text-brand hover:underline"
+                      >
+                        + занятие
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -753,7 +799,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                         className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-rose-500"
                         style={{ top: (nowMinutes - range.startHour * 60) * pxPerMin }}
                       >
-                        <span className="absolute -top-4 right-1 rounded bg-rose-500 px-1 text-[9px] font-semibold text-white">
+                        <span className="absolute -top-4 right-1 rounded bg-danger px-1 text-[10px] font-semibold tabular-nums text-white">
                           {hhmm(nowMinutes)}
                         </span>
                       </div>
@@ -761,7 +807,7 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
 
                     {items.map((item) => {
                       const top = (item.startMin - range.startHour * 60) * pxPerMin;
-                      const height = Math.max((item.endMin - item.startMin) * pxPerMin, 16);
+                      const height = Math.max((item.endMin - item.startMin) * pxPerMin, 24);
                       const width = 100 / item.lanes;
                       const cancelled = item.session.status === 'cancelled';
                       const active = item.session.sessionId === selectedId;
@@ -772,34 +818,42 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
+                            setAnchor(event.currentTarget.getBoundingClientRect());
                             setSelectedId(active ? null : item.session.sessionId);
                           }}
-                          title={`${item.session.courseName} · ${item.session.roomName} · ${item.session.teacherName}`}
-                          className={`absolute overflow-hidden rounded border px-1 py-0.5 text-left text-[11px] text-slate-800 shadow-sm ${
+                          aria-label={`${item.session.courseName}, ${hhmm(item.startMin)}–${hhmm(item.endMin)}, ${item.session.roomName}, ${item.session.teacherName}`}
+                          className={`absolute overflow-hidden rounded-sm border py-0.5 pl-2 pr-1 text-left text-[11px] text-ink shadow-sm transition-shadow hover:shadow-card ${
                             cancelled ? 'border-dashed' : ''
-                          } ${active ? 'ring-2 ring-slate-400' : ''}`}
+                          } ${active ? 'ring-2 ring-brand' : ''}`}
                           style={{
                             top,
                             height,
                             left: `${item.lane * width}%`,
                             width: `calc(${width}% - 2px)`,
-                            backgroundColor: `${color}24`,
-                            borderColor: color
+                            backgroundColor: `${color}1F`,
+                            borderColor: `${color}99`
                           }}
                         >
-                          <span className="block font-mono text-[10px] text-slate-500">
+                          <span
+                            aria-hidden="true"
+                            className="absolute inset-y-0 left-0 w-[3px]"
+                            style={{ backgroundColor: color }}
+                          />
+                          <span className="block font-mono text-[10px] tabular-nums text-muted">
                             {hhmm(item.startMin)}–{hhmm(item.endMin)}
                           </span>
-                          <span className="block truncate font-medium">
+                          <span className="block truncate text-xs font-semibold">
                             {item.session.courseName}
                           </span>
-                          {height > 42 && (
-                            <span className="block truncate text-[10px] text-slate-500">
+                          {height > 48 && (
+                            <span className="block truncate text-[10px] text-muted">
                               {item.session.roomName} · {item.session.teacherName}
                             </span>
                           )}
                           {cancelled && (
-                            <span className="block text-[9px] font-semibold uppercase">отменён</span>
+                            <span className="block text-[10px] font-semibold uppercase text-danger">
+                              отменён
+                            </span>
                           )}
                         </button>
                       );
@@ -808,17 +862,12 @@ export function ScheduleTab({ studioId, canManage }: { studioId: string; canMana
                     {selected &&
                       byDay.get(day)?.some((item) => item.session.sessionId === selected.sessionId) && (
                         <div
-                          className="absolute z-30 w-60 rounded-lg border border-slate-200 bg-white p-2 text-[11px] shadow-xl"
-                          style={{
-                            top: Math.max(
-                              (zonedMinutes(selected.startsAt, timeZone).minutes -
-                                range.startHour * 60) *
-                                pxPerMin -
-                                8,
-                              0
-                            ),
-                            left: '25%'
-                          }}
+                          ref={popoverRef}
+                          role="dialog"
+                          aria-label={`Занятие: ${selected.courseName}`}
+                          tabIndex={-1}
+                          className="fixed z-50 w-[280px] rounded-md border border-line bg-surface p-2.5 text-xs shadow-pop outline-none"
+                          style={popoverPosition()}
                           onClick={(event) => event.stopPropagation()}
                         >
                           <div className="flex items-start justify-between gap-2">

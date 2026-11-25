@@ -2,6 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { ROLE_LABELS, type Member } from '../types';
 import { Avatar } from '../components/Avatar';
+import { Button } from '../ui/Button';
+import { Badge } from '../ui/Card';
+import { InlineAlert } from '../ui/InlineAlert';
+import { EmptyState, TableSkeleton } from '../ui/States';
+import { Table } from '../ui/Table';
 
 interface MeResponse {
   user: { email: string };
@@ -15,6 +20,7 @@ export function StaffTab({ studioId, canManage }: { studioId: string; canManage:
   const [isOwner, setIsOwner] = useState(false);
   const [currentEmail, setCurrentEmail] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftRoles, setDraftRoles] = useState<string[]>([]);
@@ -36,9 +42,12 @@ export function StaffTab({ studioId, canManage }: { studioId: string; canManage:
   }, [studioId]);
 
   useEffect(() => {
-    void load().catch((cause) =>
-      setError(cause instanceof Error ? cause.message : 'Не удалось загрузить участников')
-    );
+    setLoading(true);
+    void load()
+      .catch((cause) =>
+        setError(cause instanceof Error ? cause.message : 'Не удалось загрузить участников')
+      )
+      .finally(() => setLoading(false));
   }, [load]);
 
   async function searchMember(event: React.FormEvent) {
@@ -145,221 +154,213 @@ export function StaffTab({ studioId, canManage }: { studioId: string; canManage:
   const selectedIsSelf = selected?.email === currentEmail;
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6">
+    <section className="card p-4 md:p-6">
       <h3 className="text-base font-semibold">Персонал</h3>
 
       {canManage && (
-        <form onSubmit={searchMember} className="mt-4 space-y-3 rounded-lg bg-slate-50 p-4">
-        <div>
-          <p className="text-sm font-medium text-slate-700">Назначить роли участнику</p>
-          <p className="text-xs text-slate-500">
-            Новые пользователи регистрируются по ссылке студии и получают роль «ученик»; новые
-            ученики добавляются во вкладке «Ученики». Здесь выбирается участник и его роли.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="min-w-[240px] flex-1 text-sm">
-            <span className="block text-slate-600">Email или имя участника</span>
-            <input
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="student@example.com"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-violet-500"
-            />
-          </label>
-          <button
-            type="submit"
-            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
-          >
-            Найти
-          </button>
-        </div>
-
-        {searchResults.length > 0 && !selected && (
-          <ul className="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white text-sm">
-            {searchResults.map((member) => (
-              <li key={member.membershipId}>
-                <button
-                  type="button"
-                  onClick={() => pickMember(member)}
-                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-50"
-                >
-                  <span className="flex items-center gap-2">
-                    <Avatar url={member.avatarUrl} name={member.displayName ?? member.email ?? '?'} size={22} />
-                    <span>
-                      <span className="font-medium">{member.displayName ?? member.email}</span>
-                      <span className="ml-2 text-xs text-slate-500">{member.email}</span>
-                    </span>
-                  </span>
-                  <span className="text-xs text-slate-500">{member.roles.join(', ')}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {selected && (
-          <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-medium">{selected.displayName ?? selected.email}</span>
-              <span className="text-xs text-slate-500">{selected.email}</span>
-              <button
-                type="button"
-                onClick={() => setSelected(null)}
-                className="ml-auto rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
-              >
-                Отмена
-              </button>
-            </div>
-
-            {selectedIsOwner || selectedIsSelf ? (
-              <p className="text-xs text-slate-600">
-                {selectedIsOwner
-                  ? 'Роли владельца здесь не меняются: владение передаётся кнопкой «Передать владение» у участника в списке ниже.'
-                  : 'Свои роли менять нельзя — попросите это сделать владельца или администратора.'}
-              </p>
-            ) : (
-              <>
-                <div className="flex flex-wrap gap-2 text-sm">
-                  {ALL_ROLES.filter((role) => role !== 'owner').map((role) => (
-                    <label key={role} className="flex items-center gap-1.5">
-                      <input
-                        type="checkbox"
-                        checked={selectedRoles.includes(role)}
-                        onChange={() => toggleSelectedRole(role)}
-                        className="rounded border-slate-300"
-                      />
-                      {ROLE_LABELS[role]}
-                    </label>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void saveSelectedRoles()}
-                  className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
-                >
-                  Сохранить роли
-                </button>
-              </>
-            )}
+        <form onSubmit={searchMember} className="mt-4 space-y-3 rounded-md bg-subtle p-4">
+          <div>
+            <p className="text-sm font-medium">Назначить роли участнику</p>
+            <p className="text-xs text-muted">
+              Новые пользователи регистрируются по ссылке студии и получают роль «ученик»; новые
+              ученики добавляются во вкладке «Ученики». Здесь выбирается участник и его роли.
+            </p>
           </div>
-        )}
-      </form>
+          <div className="flex flex-wrap items-end gap-2">
+            <label htmlFor="staff-search" className="min-w-[240px] flex-1">
+              <span className="label">Email или имя участника</span>
+              <input
+                id="staff-search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="student@example.com"
+                className="input"
+              />
+            </label>
+            <Button type="submit">Найти</Button>
+          </div>
+
+          {searchResults.length > 0 && !selected && (
+            <ul className="divide-y divide-line overflow-hidden rounded-md border border-line bg-surface text-sm">
+              {searchResults.map((member) => (
+                <li key={member.membershipId}>
+                  <button
+                    type="button"
+                    onClick={() => pickMember(member)}
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-subtle"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Avatar
+                        url={member.avatarUrl}
+                        name={member.displayName ?? member.email ?? '?'}
+                        size={22}
+                      />
+                      <span>
+                        <span className="font-medium">{member.displayName ?? member.email}</span>
+                        <span className="ml-2 text-xs text-faint">{member.email}</span>
+                      </span>
+                    </span>
+                    <span className="text-xs text-faint">{member.roles.join(', ')}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {selected && (
+            <div className="space-y-2 rounded-md border border-line bg-surface p-3">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="font-medium">{selected.displayName ?? selected.email}</span>
+                <span className="text-xs text-faint">{selected.email}</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="ml-auto"
+                  onClick={() => setSelected(null)}
+                >
+                  Отмена
+                </Button>
+              </div>
+
+              {selectedIsOwner || selectedIsSelf ? (
+                <p className="text-xs text-muted">
+                  {selectedIsOwner
+                    ? 'Роли владельца здесь не меняются: владение передаётся кнопкой «Передать владение» у участника в списке ниже.'
+                    : 'Свои роли менять нельзя — попросите это сделать владельца или администратора.'}
+                </p>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-3 text-sm">
+                    {ALL_ROLES.filter((role) => role !== 'owner').map((role) => (
+                      <label key={role} className="flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          checked={selectedRoles.includes(role)}
+                          onChange={() => toggleSelectedRole(role)}
+                          className="rounded border-line-strong"
+                        />
+                        {ROLE_LABELS[role]}
+                      </label>
+                    ))}
+                  </div>
+                  <Button size="sm" onClick={() => void saveSelectedRoles()}>
+                    Сохранить роли
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        </form>
       )}
 
-      {error && <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      {error && (
+        <div className="mt-3">
+          <InlineAlert variant="error">{error}</InlineAlert>
+        </div>
+      )}
 
-      <table className="mt-4 w-full text-sm">
-        <thead>
-          <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-            <th className="py-2">Участник</th>
-            <th className="py-2">Роли</th>
-            <th className="py-2" />
-          </tr>
-        </thead>
-        <tbody>
-          {members.map((member) => {
-            const isSelf = member.email === currentEmail;
-            const canEdit = !isSelf && !member.roles.includes('owner');
-            return (
-              <tr key={member.membershipId} className="border-t border-slate-100">
-                <td className="py-2">
-                  <div className="flex items-center gap-2">
-                    <Avatar url={member.avatarUrl} name={member.displayName ?? member.email ?? '?'} />
-                    <div>
-                      <div className="font-medium">
-                        {member.displayName ?? member.email}
-                        {isSelf && <span className="ml-2 text-xs text-slate-400">(вы)</span>}
+      {loading ? (
+        <TableSkeleton />
+      ) : members.length === 0 ? (
+        <div className="mt-4">
+          <EmptyState
+            title="Сотрудников пока нет"
+            text="Участник получает роль сотрудника через поле «Назначить роли участнику» выше."
+          />
+        </div>
+      ) : (
+        <Table caption="Сотрудники студии" className="mt-4">
+          <thead>
+            <tr>
+              <th className="table-th" scope="col">
+                Участник
+              </th>
+              <th className="table-th" scope="col">
+                Роли
+              </th>
+              <th className="table-th" scope="col">
+                <span className="sr-only">Действия</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {members.map((member) => {
+              const isSelf = member.email === currentEmail;
+              const canEdit = !isSelf && !member.roles.includes('owner');
+              return (
+                <tr key={member.membershipId} className="border-t border-line">
+                  <td className="table-td">
+                    <div className="flex items-center gap-2">
+                      <Avatar url={member.avatarUrl} name={member.displayName ?? member.email ?? '?'} />
+                      <div className="min-w-0">
+                        <div className="truncate font-medium text-ink">
+                          {member.displayName ?? member.email}
+                          {isSelf && <span className="ml-2 text-xs text-faint">(вы)</span>}
+                        </div>
+                        <div className="truncate text-xs text-faint">{member.email}</div>
                       </div>
-                      <div className="text-xs text-slate-500">{member.email}</div>
                     </div>
-                  </div>
-                </td>
-                <td className="py-2">
-                  {editingId === member.membershipId ? (
-                    <form
-                      onSubmit={(event) => saveRoles(event, member.membershipId)}
-                      className="flex flex-wrap gap-2"
-                    >
-                      {ALL_ROLES.filter((role) => role !== 'owner').map((role) => (
-                        <label key={role} className="flex items-center gap-1 text-xs">
-                          <input
-                            type="checkbox"
-                            checked={draftRoles.includes(role)}
-                            onChange={() => toggleDraftRole(role)}
-                          />
-                          {ROLE_LABELS[role]}
-                        </label>
-                      ))}
-                      <button
-                        type="submit"
-                        className="rounded bg-violet-600 px-2 py-1 text-xs font-semibold text-white hover:bg-violet-700"
+                  </td>
+                  <td className="table-td">
+                    {editingId === member.membershipId ? (
+                      <form
+                        onSubmit={(event) => saveRoles(event, member.membershipId)}
+                        className="flex flex-wrap items-center gap-2"
                       >
-                        Сохранить
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingId(null)}
-                        className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600"
-                      >
-                        Отмена
-                      </button>
-                    </form>
-                  ) : (
-                    <div className="flex flex-wrap gap-1">
-                      {member.roles.map((role) => (
-                        <span
-                          key={role}
-                          className={`rounded-full px-2 py-0.5 text-xs ${
-                            role === 'owner'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}
-                        >
-                          {ROLE_LABELS[role] ?? role}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </td>
-                <td className="py-2 text-right">
-                  {canManage && (
-                  <div className="flex justify-end gap-2">
-                    {canEdit && editingId !== member.membershipId && (
-                      <button
-                        type="button"
-                        onClick={() => startEdit(member)}
-                        className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
-                      >
-                        Изменить роли
-                      </button>
+                        {ALL_ROLES.filter((role) => role !== 'owner').map((role) => (
+                          <label key={role} className="flex items-center gap-1 text-xs">
+                            <input
+                              type="checkbox"
+                              checked={draftRoles.includes(role)}
+                              onChange={() => toggleDraftRole(role)}
+                            />
+                            {ROLE_LABELS[role]}
+                          </label>
+                        ))}
+                        <Button type="submit" size="sm">
+                          Сохранить
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
+                          Отмена
+                        </Button>
+                      </form>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {member.roles.map((role) => (
+                          <Badge key={role} tone={role === 'owner' ? 'warning' : 'neutral'}>
+                            {ROLE_LABELS[role] ?? role}
+                          </Badge>
+                        ))}
+                      </div>
                     )}
-                    {isOwner && !member.roles.includes('owner') && (
-                      <button
-                        type="button"
-                        onClick={() => transferOwnership(member)}
-                        className="rounded px-2 py-1 text-xs text-amber-700 hover:bg-amber-50"
-                      >
-                        Передать владение
-                      </button>
+                  </td>
+                  <td className="table-td text-right">
+                    {canManage && (
+                      <div className="flex flex-wrap justify-end gap-1">
+                        {canEdit && editingId !== member.membershipId && (
+                          <Button size="sm" variant="ghost" onClick={() => startEdit(member)}>
+                            Изменить роли
+                          </Button>
+                        )}
+                        {isOwner && !member.roles.includes('owner') && (
+                          <Button size="sm" variant="ghost" onClick={() => transferOwnership(member)}>
+                            Передать владение
+                          </Button>
+                        )}
+                        {canEdit && !member.roles.includes('owner') && (
+                          <Button size="sm" variant="danger" onClick={() => removeMember(member)}>
+                            Исключить
+                          </Button>
+                        )}
+                      </div>
                     )}
-                    {canEdit && !member.roles.includes('owner') && (
-                      <button
-                        type="button"
-                        onClick={() => removeMember(member)}
-                        className="rounded px-2 py-1 text-xs text-rose-600 hover:bg-rose-50"
-                      >
-                        Исключить
-                      </button>
-                    )}
-                  </div>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </Table>
+      )}
     </section>
   );
 }
