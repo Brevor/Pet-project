@@ -4,6 +4,7 @@ import type { Pool } from 'pg';
 import { AppError, errorBody } from './errors';
 import { authRoutes } from './modules/auth/routes';
 import { coursesRoutes } from './modules/courses/routes';
+import { groupsRoutes } from './modules/groups/routes';
 import { joinRoutes } from './modules/join/routes';
 import { membersRoutes } from './modules/members/routes';
 import { roomsRoutes } from './modules/rooms/routes';
@@ -54,6 +55,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     app.register(membersRoutes, { prefix, pool: options.pool });
     app.register(roomsRoutes, { prefix, pool: options.pool });
     app.register(coursesRoutes, { prefix, pool: options.pool });
+    app.register(groupsRoutes, { prefix, pool: options.pool });
     app.register(scheduleRoutes, { prefix, pool: options.pool });
     app.register(joinRoutes, {
       prefix,
