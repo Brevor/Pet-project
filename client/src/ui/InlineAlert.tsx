@@ -4,9 +4,9 @@ type Variant = 'info' | 'success' | 'warning' | 'error';
 
 const TONES: Record<Variant, string> = {
   info: 'border-line bg-subtle text-ink',
-  success: 'border-success/30 bg-success/5 text-success',
-  warning: 'border-warning/30 bg-warning/5 text-warning',
-  error: 'border-danger/30 bg-danger/5 text-danger'
+  success: 'border-success-border bg-success-soft text-success',
+  warning: 'border-warning-border bg-warning-soft text-warning',
+  error: 'border-danger-border bg-danger-soft text-danger'
 };
 
 export function InlineAlert({

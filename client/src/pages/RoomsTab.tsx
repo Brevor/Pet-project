@@ -130,7 +130,7 @@ export function RoomsTab({ studioId }: { studioId: string }) {
         </button>
       </form>
 
-      {error && <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">{error}</p>}
+      {error && <p className="rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
       <div className="grid gap-3 sm:grid-cols-2">
         {rooms.map((room) => (

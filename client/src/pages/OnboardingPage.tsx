@@ -51,7 +51,7 @@ export function OnboardingPage({ onChanged }: { onChanged: () => void }) {
         </p>
       </section>
 
-      {error && <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">{error}</p>}
+      {error && <p className="rounded-md border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
       <div className="grid gap-4 md:grid-cols-2">
         <section className="card p-5">
