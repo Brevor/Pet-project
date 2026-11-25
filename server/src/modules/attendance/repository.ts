@@ -1,5 +1,6 @@
 import type { Pool } from 'pg';
 import { AppError } from '../../errors';
+import { chargeAttendanceLesson, refundAttendanceLesson } from '../balance/repository';
 
 export const ATTENDANCE_STATUSES = ['attended', 'no_show', 'cancelled'] as const;
 export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number];
@@ -147,6 +148,14 @@ export async function createAttendance(
        RETURNING id, session_id, membership_id, status, marked_at`,
       [input.studioId, input.sessionId, input.membershipId, input.status, input.actorUserId]
     );
+    if (input.status === 'attended') {
+      await chargeAttendanceLesson(client, {
+        studioId: input.studioId,
+        sessionId: input.sessionId,
+        membershipId: input.membershipId,
+        actorUserId: input.actorUserId
+      });
+    }
     await client.query('COMMIT');
     return toAttendanceView(rows[0]!);
   } catch (error) {
@@ -223,6 +232,22 @@ export async function updateAttendance(
          VALUES ($1, $2, $3, $4, $5, $6)`,
         [input.studioId, input.attendanceId, current.status, input.status, input.reason, input.actorUserId]
       );
+      if (input.status === 'attended') {
+        await chargeAttendanceLesson(client, {
+          studioId: input.studioId,
+          sessionId: current.session_id,
+          membershipId: current.membership_id,
+          actorUserId: input.actorUserId
+        });
+      } else if (current.status === 'attended') {
+        await refundAttendanceLesson(client, {
+          studioId: input.studioId,
+          sessionId: current.session_id,
+          membershipId: current.membership_id,
+          actorUserId: input.actorUserId,
+          reason: input.reason
+        });
+      }
     }
 
     await client.query('COMMIT');
