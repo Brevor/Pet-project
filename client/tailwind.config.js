@@ -18,8 +18,14 @@ export default {
           soft: 'var(--brand-soft)'
         },
         danger: 'var(--danger)',
+        'danger-soft': 'var(--danger-soft)',
+        'danger-border': 'var(--danger-border)',
         warning: 'var(--warning)',
-        success: 'var(--success)'
+        'warning-soft': 'var(--warning-soft)',
+        'warning-border': 'var(--warning-border)',
+        success: 'var(--success)',
+        'success-soft': 'var(--success-soft)',
+        'success-border': 'var(--success-border)'
       },
       borderRadius: { sm: '6px', md: '10px', lg: '14px' },
       boxShadow: {
