@@ -1,6 +1,6 @@
-# HANDOFF → Architect: Фаза 2 (посещаемость, баланс, группы, достижения)
+# HANDOFF → TechLead: Фаза 2 (посещаемость, баланс, группы, достижения)
 
-> Дата: 2026-11-25 · От: Analyst · Кому: Architect
+> Дата: 2026-11-25 · От: Architect · Кому: TechLead
 
 ## Вход (approved)
 - `doc/requirements/attendance.md` v1.0.0 (ATT-1…ATT-14)
@@ -22,12 +22,12 @@
   одному ученику один раз, предустановленный каталог при создании студии, внутреннее уведомление;
 - письма не отправляются (STF-9) — SMTP не проектировать.
 
-## Ожидаемые артефакты Architect
-1. Схема: `course_groups`, `course_group_members`, `attendance`, `attendance_revisions`,
+## Сделано Architect
+1. Миграция `010_phase2.sql` применена на локальной и контейнерной БД. Схема: `course_groups`, `course_group_members` (`course_id` + `UNIQUE (membership_id, course_id)`), `attendance`, `attendance_revisions`,
    `lesson_balance_operations`, `achievements`, `student_achievements` (+ составные FK по
    `studio_id`, частичные индексы «одна группа курса на ученика», «одно не отозванное достижение»,
    идемпотентность списания по `(session_id, membership_id)`).
-2. Миграция(и) 010+ (Decision Gate: подтверждение схемы пользователем до применения).
+2. Контракты `contracts.md` §2/§8 и карта прав `architecture.md` §8 — следующая задача Architect (не начата).
 3. Контракты: эндпоинты GRP-9, ATT-14, BAL-8, ACH-8 + права (`attendance.manage`, `balance.read/write`,
    `achievements.write`) и карта прав в `architecture.md` §8.
 4. Раздел архитектуры: ростер сеанса, транзакция «отметка + списание», срок действия пакета,

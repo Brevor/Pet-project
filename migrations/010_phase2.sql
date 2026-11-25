@@ -9,18 +9,20 @@ CREATE TABLE course_groups (
   archived boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (studio_id, id),
-  UNIQUE (course_id, lower(name)),
   FOREIGN KEY (studio_id, course_id) REFERENCES courses (studio_id, id) ON DELETE CASCADE
 );
 CREATE INDEX course_groups_studio_idx ON course_groups (studio_id);
+CREATE UNIQUE INDEX course_groups_name_uniq ON course_groups (course_id, lower(name));
 
 CREATE TABLE course_group_members (
   studio_id uuid NOT NULL,
   group_id uuid NOT NULL,
+  course_id uuid NOT NULL,
   membership_id uuid NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (group_id, membership_id),
-  UNIQUE (membership_id, group_id),
+  UNIQUE (membership_id, course_id),
+  FOREIGN KEY (studio_id, course_id) REFERENCES courses (studio_id, id) ON DELETE CASCADE,
   FOREIGN KEY (studio_id, group_id) REFERENCES course_groups (studio_id, id) ON DELETE CASCADE,
   FOREIGN KEY (studio_id, membership_id) REFERENCES memberships (studio_id, id) ON DELETE CASCADE
 );
@@ -38,7 +40,7 @@ CREATE TABLE attendance (
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (studio_id, id),
   UNIQUE (session_id, membership_id),
-  FOREIGN KEY (studio_id, session_id) REFERENCES class_sessions (studio_id, id) ON DELETE CASCADE,
+  FOREIGN KEY (session_id) REFERENCES class_sessions (id) ON DELETE CASCADE,
   FOREIGN KEY (studio_id, membership_id) REFERENCES memberships (studio_id, id) ON DELETE CASCADE
 );
 CREATE INDEX attendance_studio_idx ON attendance (studio_id);
@@ -69,7 +71,7 @@ CREATE TABLE lesson_balance_operations (
   created_by uuid REFERENCES users (id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY (studio_id, membership_id) REFERENCES memberships (studio_id, id) ON DELETE CASCADE,
-  FOREIGN KEY (studio_id, session_id) REFERENCES class_sessions (studio_id, id) ON DELETE SET NULL,
+  FOREIGN KEY (session_id) REFERENCES class_sessions (id) ON DELETE CASCADE,
   CHECK (kind <> 'topup' OR lessons > 0)
 );
 CREATE INDEX lesson_balance_membership_idx ON lesson_balance_operations (membership_id, created_at DESC);
@@ -85,10 +87,10 @@ CREATE TABLE achievements (
   archived boolean NOT NULL DEFAULT false,
   created_by uuid REFERENCES users (id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (studio_id, id),
-  UNIQUE (studio_id, lower(name))
+  UNIQUE (studio_id, id)
 );
 CREATE INDEX achievements_studio_idx ON achievements (studio_id);
+CREATE UNIQUE INDEX achievements_name_uniq ON achievements (studio_id, lower(name));
 
 CREATE TABLE student_achievements (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
