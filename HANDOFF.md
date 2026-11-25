@@ -1,36 +1,20 @@
-# HANDOFF → TechLead: Фаза 2 (посещаемость, баланс, группы, достижения)
+# HANDOFF: M16 — точка остановки после T-88
 
-> Дата: 2026-11-25 · От: Architect · Кому: TechLead
+> 2026-11-25 · Coder → следующая сессия
 
-## Вход (approved)
-- `doc/requirements/attendance.md` v1.0.0 (ATT-1…ATT-14)
-- `doc/requirements/balance.md` v1.0.0 (BAL-1…BAL-9)
-- `doc/requirements/groups.md` v1.0.0 (GRP-1…GRP-9)
-- `doc/requirements/achievements.md` v1.0.0 (ACH-1…ACH-10)
-- `doc/requirements/studio.md` v0.11.0 (STF-9: временный пароль, без письма); `proposal.md` (Фаза 2, §11)
+## Сделано
+- **T-88 закрыт**: `server/src/modules/groups/routes.ts` (CRUD групп курса, состав, ростер),
+  регистрация в `app.ts`, тесты `server/test/groups.test.ts` (1 тест, все ветки: 201, 409 dup,
+  409 вторая группа, 403 teacher, 204 удаления). `tsc` 0, тест зелёный.
+- Миграция 010 применена локально и в контейнере (`5e2381f`).
 
-## Решения, обязательные к учёту
-- посещаемость: самоотметка ученика только из ростера, окно [начало; +120 мин]; администратор
-  ставит и исправляет любую отметку; преподаватель/ассистент/куратор отметок не ставят;
-  статусы `attended` / `no_show` / `cancelled`; неявка и отмена не списывают;
-- баланс: начисление пакета только owner/admin, остаток целый, отрицательный запрещён
-  (`409 NO_LESSONS_LEFT`), списание 1 атомарно с `attended`, возврат при исправлении,
-  срок действия пакета есть (BAL-9);
-- группы: группа принадлежит курсу; ученик может посещать несколько курсов (по одной группе в каждом), лимита мест нет,
-  `courses.capacity` — справочно, ростер сеанса = ученики всех групп курса;
-- достижения: каталог ведёт куратор, выдача/отзыв — owner/admin/curator, одно достижение
-  одному ученику один раз, предустановленный каталог при создании студии, внутреннее уведомление;
-- письма не отправляются (STF-9) — SMTP не проектировать.
+## Следующая задача — T-89 (посещаемость)
+Файлы: `server/src/modules/attendance/{routes,repository}.ts`, `server/src/modules/balance/*`.
+Ключевое: ростер = ученики групп курса (SQL из `course_group_members`); самоотметка — окно
+[начало; +120 мин] в TZ студии (`zonedMinutes` из schedule), только `attended`; админ — любой
+статус любому ученику студии; `PATCH` с аудитом (`attendance_revisions`); `409 CHECKIN_WINDOW_CLOSED`,
+`ALREADY_MARKED`, `SESSION_CANCELLED`, `NOT_IN_ROSTER`; списание/возврат — в транзакции (T-90).
+Тесты: `server/test/attendance.test.ts` по образцу `groups.test.ts` (фикстуры уже есть).
 
-## Сделано Architect
-1. Миграция `010_phase2.sql` применена на локальной и контейнерной БД. Схема: `course_groups`, `course_group_members` (`course_id` + `UNIQUE (membership_id, course_id)`), `attendance`, `attendance_revisions`,
-   `lesson_balance_operations`, `achievements`, `student_achievements` (+ составные FK по
-   `studio_id`, частичные индексы «одна группа курса на ученика», «одно не отозванное достижение»,
-   идемпотентность списания по `(session_id, membership_id)`).
-2. Контракты `contracts.md` §2/§8 и карта прав `architecture.md` §8 — следующая задача Architect (не начата).
-3. Контракты: эндпоинты GRP-9, ATT-14, BAL-8, ACH-8 + права (`attendance.manage`, `balance.read/write`,
-   `achievements.write`) и карта прав в `architecture.md` §8.
-4. Раздел архитектуры: ростер сеанса, транзакция «отметка + списание», срок действия пакета,
-   предустановленный каталог, влияние на §14.2/§14.5 приёмку.
-
-## Открытых вопросов нет
+## Правила
+Одна задача за шаг, проверки (`tsc` 0/0, eslint 0, наборы) до коммита, подтверждение перед следующей.
